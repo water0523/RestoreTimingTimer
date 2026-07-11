@@ -1070,12 +1070,15 @@
     <div class="settings-field">
         <label>GitHub Token</label>
         <input type="password" id="settings-token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
-        <div class="help-text">在 GitHub Settings → Developer settings → Personal access tokens 生成，需要 repo 权限</div>
+        <div class="help-text">
+            <span style="display:block;margin-bottom:4px;">在 GitHub Settings → Developer settings → Personal access tokens 生成，需要 repo 权限</span>
+            <span style="display:block;color:#666;">注意：项目专属仓库为 <strong>water0523/RestoreTimingTimer</strong>，请确保 Token 有 repo 权限</span>
+        </div>
     </div>
 
     <div class="settings-field">
         <label>仓库地址</label>
-        <input type="text" id="settings-repo" placeholder="water0523/timing-" />
+        <input type="text" id="settings-repo" value="water0523/RestoreTimingTimer" />
         <div class="help-text">格式：用户名/仓库名</div>
     </div>
 
