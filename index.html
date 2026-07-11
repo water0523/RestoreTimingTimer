@@ -129,6 +129,30 @@
             font-weight: normal;
         }
 
+        /* 设置齿轮按钮 */
+        .settings-gear {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            width: 40px;
+            height: 40px;
+            border: none;
+            background: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+            z-index: 20;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, color 0.2s;
+        }
+        .settings-gear:hover {
+            background: #f0f0f0;
+            color: #555;
+        }
+
         /* 底部开始按钮 */
         .start-btn-container {
             position: absolute;
@@ -554,14 +578,14 @@
             transform: scale(0.95);
         }
 
-        /* === 左侧“结束”按钮样式 (白色填充) === */
+        /* === 左侧"结束"按钮样式 (白色填充) === */
         .btn-end {
             background-color: #ffffff;
             color: #333333;       /* 深灰色文字 */
             border: 1px solid #ffffff; /* 保持边框一致防止抖动 */
         }
 
-        /* === 右侧“暂停”按钮样式 (透明描边) === */
+        /* === 右侧"暂停"按钮样式 (透明描边) === */
         .btn-pause {
             background-color: transparent; /* 透明背景 */
             color: #ffffff;                /* 白色文字 */
@@ -736,6 +760,59 @@
 .btn-confirm-flat { background: #2196F3; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; }
 .full-width { width: 100%; }
 
+/* GitHub 设置弹窗 */
+.settings-field {
+    margin-bottom: 15px;
+}
+.settings-field label {
+    display: block;
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 5px;
+    font-weight: 500;
+}
+.settings-field input {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    outline: none;
+    background: #f9f9f9;
+    transition: border-color 0.2s, background 0.2s;
+}
+.settings-field input:focus {
+    border-color: #2196F3;
+    background: #fff;
+}
+.settings-field .help-text {
+    font-size: 12px;
+    color: #999;
+    margin-top: 4px;
+}
+.settings-status {
+    font-size: 13px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    display: none;
+}
+.settings-status.success {
+    display: block;
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+.settings-status.error {
+    display: block;
+    background: #ffebee;
+    color: #c62828;
+}
+.settings-status.info {
+    display: block;
+    background: #e3f2fd;
+    color: #1565c0;
+}
+
 /* 历史列表 */
 .history-list-container {
     max-height: 300px;
@@ -843,7 +920,7 @@
                 
                 <!-- 右侧：数值 + 下划线 -->
                 <div class="time-value-wrapper">
-                    <!-- 初始显示“未设置”，单位隐藏 -->
+                    <!-- 初始显示"未设置"，单位隐藏 -->
                     <span class="duration-display" id="display-hours">未设置</span>
                     <span class="duration-unit" id="display-unit" style="display:none;">小时</span>
                 </div>
@@ -855,6 +932,8 @@
         查看历史记录
     </span>
         </div>
+        <!-- 设置齿轮按钮 -->
+        <button class="settings-gear" onclick="openSettingsModal()" title="云同步设置">&#9881;</button>
         <!-- 底部开始按钮 -->
         <div class="start-btn-container">
             <button class="start-btn" onclick="startFocus()">开始学习</button>
@@ -975,6 +1054,44 @@
         <input type="file" id="backup-file-input" accept=".json" style="display: none;" onchange="importBackup(this)">
     </div>
 </div>
+
+<!-- ================= 弹窗: GitHub 云同步设置 ================= -->
+<div class="modal-overlay" id="settings-overlay" onclick="closeSettingsModal()"></div>
+<div class="center-modal" id="settings-modal">
+    <div class="modal-header-row">
+        <div class="modal-title">☁️ 云同步设置</div>
+        <div class="close-icon" onclick="closeSettingsModal()">×</div>
+    </div>
+    
+    <div class="modal-info" style="font-size: 13px; color: #888; margin-bottom: 20px;">
+        配置 GitHub 仓库后，每次保存记录将自动同步到云端（直接写入仓库的 data/records.json 文件）。
+    </div>
+
+    <div class="settings-field">
+        <label>GitHub Token</label>
+        <input type="password" id="settings-token" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" />
+        <div class="help-text">在 GitHub Settings → Developer settings → Personal access tokens 生成，需要 repo 权限</div>
+    </div>
+
+    <div class="settings-field">
+        <label>仓库地址</label>
+        <input type="text" id="settings-repo" placeholder="water0523/timing-" />
+        <div class="help-text">格式：用户名/仓库名</div>
+    </div>
+
+    <div class="settings-field">
+        <label>分支</label>
+        <input type="text" id="settings-branch" value="main" />
+        <div class="help-text">默认 main</div>
+    </div>
+
+    <div id="settings-status" class="settings-status"></div>
+
+    <div class="modal-btns">
+        <button class="btn-cancel-flat" onclick="closeSettingsModal()">取消</button>
+        <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
+    </div>
+</div>
     <script>
         // ================= 配置数据 =================
 // ================= 配置数据 (本地图片版) =================
@@ -998,7 +1115,7 @@ const resources = [
             // --- 第 3 组：人类文明发展 ---
             { img: './images/13.png', title: '古代', quote: '人类的祖先在这篇大陆上开疆辟土，学习有时候需要互相帮助。' },
             { img: './images/14.png', title: '部落', quote: '听说印第安人始终保持着这样的生活方式，今天的学习到这里也可以结束了。' },
-            { img: './images/15.png', title: '村庄', quote: '人类不再到处游荡，有了自己固定的“家”，记得回忆和巩固自己今天的学习。' },
+            { img: './images/15.png', title: '村庄', quote: '人类不再到处游荡，有了自己固定的"家"，记得回忆和巩固自己今天的学习。' },
             { img: './images/16.png', title: '人群', quote: '人多力量大？前提是要有着共同的目标。' },
             { img: './images/17.png', title: '近代', quote: '王国，朝代逐渐形成，注意归纳你所学的知识。' },
             { img: './images/18.png', title: '现代', quote: '我们所生活的年代，注意劳逸结合。' },
@@ -1120,7 +1237,7 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
             colMinute.scrollTop = 0 * itemHeight;
             updateHighlight(colHour);
             updateHighlight(colMinute);
-            // 注意：这里不再调用 calculateEndTime，因为初始状态是“未设置”
+            // 注意：这里不再调用 calculateEndTime，因为初始状态是"未设置"
         }, 100);
 
             // 绑定滚动高亮事件
@@ -1183,7 +1300,7 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
             const unitEl = document.getElementById('display-unit');
             
             displayEl.innerText = displayVal; // 显示数字
-            unitEl.style.display = 'inline';  // 显示“小时”单位
+            unitEl.style.display = 'inline';  // 显示"小时"单位
 
             // 删除或注释掉之前给父容器加线的代码：
             // document.querySelector('.time-value-wrapper').style.borderBottom = '2px solid #2196F3';
@@ -1241,7 +1358,7 @@ function startFocus() {
     elapsedMs = 0; 
     lastCycleIndex = 0;
 
-    // --- 【新增：彻底修复“进度不重置”的问题】 ---
+    // --- 【新增：彻底修复"进度不重置"的问题】 ---
     currentResIndex = 0; 
     // ----------------------------------------
 
@@ -1582,7 +1699,7 @@ function deleteTaskSuggestion(name, event) {
 
         // ================= 结束控制逻辑 =================
 
- // 1. 拦截“结束”按钮
+ // 1. 拦截"结束"按钮
 function confirmEnd() {
     if (confirm("确定结束并保存记录吗？")) {
         showSummaryModal(); // 以前是直接 stopTimer()，现在改为显示弹窗
@@ -1599,7 +1716,7 @@ function finishTimer() {
 // 3. 显示总结弹窗逻辑
 // 3. 显示总结弹窗逻辑 (已修复时长丢失 Bug)
 function showSummaryModal() {
-    // 【关键修复开始】：如果当前正在运行，必须把“最后这一段”时间加进去
+    // 【关键修复开始】：如果当前正在运行，必须把"最后这一段"时间加进去
     if (isRunning) {
         const now = performance.now();
         elapsedMs += (now - startTime);
@@ -1633,7 +1750,7 @@ function closeSummary(isSave) {
     document.getElementById('summary-overlay').classList.remove('open');
     document.getElementById('summary-modal').classList.remove('active');
     
-    // 如果用户点击的是“不保存”按钮(isSave为false)，
+    // 如果用户点击的是"不保存"按钮(isSave为false)，
     // 我们也要手动调用 stopTimer 让它回主页，否则就卡在黑屏了
     if (!isSave) {
         stopTimer(); 
@@ -1688,7 +1805,7 @@ const devContainer = document.getElementById('dev-timeline-container');
 const devSlider = document.getElementById('dev-slider');
 let isDevMode = false;
 
-// 1. 监听输入框的“暗号”
+// 1. 监听输入框的"暗号"
 taskInput.addEventListener('keydown', (e) => {
     // 检测是否按下回车
     if (e.key === 'Enter') {
@@ -1792,7 +1909,7 @@ function exitDevMode() {
     // 3. 恢复自动计时（如果在拖拽过程中暂停了）
     // 如果当前是暂停状态，我们保持暂停；
     // 如果本来就在运行，或者我们想让它自动继续，可以做个判断。
-    // 这里为了体验流畅，如果你关闭了调试条，我们默认帮你恢复“运行”状态（除非你手动点了暂停）
+    // 这里为了体验流畅，如果你关闭了调试条，我们默认帮你恢复"运行"状态（除非你手动点了暂停）
     if (!isRunning && pauseBtn.innerText === "继续") {
         // 如果是暂停状态，什么都不做，等待用户点继续
     } else if (!isRunning) {
@@ -1803,16 +1920,211 @@ function exitDevMode() {
     console.log("开发者模式已关闭，回归正常时间流");
 }
 
+// ================= GitHub 云同步功能 =================
+
+// 获取 GitHub 设置
+function getGitHubSettings() {
+    const token = localStorage.getItem('github_token') || '';
+    const repo = localStorage.getItem('github_repo') || '';
+    const branch = localStorage.getItem('github_branch') || 'main';
+    return { token, repo, branch };
+}
+
+// 检查是否已配置 GitHub
+function isGitHubConfigured() {
+    const { token, repo } = getGitHubSettings();
+    return token && repo;
+}
+
+// 打开设置弹窗
+function openSettingsModal() {
+    const settings = getGitHubSettings();
+    document.getElementById('settings-token').value = settings.token;
+    document.getElementById('settings-repo').value = settings.repo;
+    document.getElementById('settings-branch').value = settings.branch;
+    document.getElementById('settings-status').className = 'settings-status';
+    document.getElementById('settings-status').style.display = 'none';
+    document.getElementById('settings-overlay').classList.add('open');
+    document.getElementById('settings-modal').classList.add('active');
+}
+
+// 关闭设置弹窗
+function closeSettingsModal() {
+    document.getElementById('settings-overlay').classList.remove('open');
+    document.getElementById('settings-modal').classList.remove('active');
+}
+
+// 保存 GitHub 设置
+function saveGitHubSettings() {
+    const token = document.getElementById('settings-token').value.trim();
+    const repo = document.getElementById('settings-repo').value.trim();
+    const branch = document.getElementById('settings-branch').value.trim() || 'main';
+    
+    if (!token || !repo) {
+        showSettingsStatus('请填写 Token 和仓库地址', 'error');
+        return;
+    }
+    
+    if (!repo.includes('/')) {
+        showSettingsStatus('仓库地址格式不正确，应为：用户名/仓库名', 'error');
+        return;
+    }
+    
+    localStorage.setItem('github_token', token);
+    localStorage.setItem('github_repo', repo);
+    localStorage.setItem('github_branch', branch);
+    
+    showSettingsStatus('✅ 设置已保存！后续保存记录时将自动同步到云端。', 'success');
+    
+    // 关闭弹窗
+    setTimeout(closeSettingsModal, 1500);
+}
+
+function showSettingsStatus(msg, type) {
+    const el = document.getElementById('settings-status');
+    el.textContent = msg;
+    el.className = 'settings-status ' + type;
+    el.style.display = 'block';
+}
+
+// 从 GitHub 读取云端数据
+async function fetchCloudData() {
+    const { token, repo, branch } = getGitHubSettings();
+    if (!token || !repo) return null;
+    
+    const url = `https://api.github.com/repos/${repo}/contents/data/records.json?ref=${branch}`;
+    
+    try {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        
+        if (response.status === 404) {
+            // 文件不存在，返回空数组
+            return [];
+        }
+        
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            console.warn('GitHub 读取失败:', response.status, err);
+            return null;
+        }
+        
+        const data = await response.json();
+        // 返回的是 base64 编码的内容
+        const content = atob(data.content.replace(/\n/g, ''));
+        return JSON.parse(content);
+        
+    } catch (err) {
+        console.warn('GitHub API 请求失败:', err);
+        return null;
+    }
+}
+
+// 合并云端和本地数据（去重，云端为主）
+function mergeCloudAndLocal(cloudList, localList) {
+    const seenIds = new Set();
+    const merged = [];
+    
+    // 先加云端的
+    (cloudList || []).forEach(item => {
+        if (item && item.id) {
+            seenIds.add(item.id);
+            merged.push(item);
+        }
+    });
+    
+    // 再加入本地不重复的
+    (localList || []).forEach(item => {
+        if (item && item.id && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            merged.push(item);
+        }
+    });
+    
+    // 按 id 降序排列（最新的在前）
+    merged.sort((a, b) => (b.id || 0) - (a.id || 0));
+    
+    return merged;
+}
+
+// 上传数据到 GitHub
+async function pushToCloud(records) {
+    const { token, repo, branch } = getGitHubSettings();
+    if (!token || !repo) return false;
+    
+    const url = `https://api.github.com/repos/${repo}/contents/data/records.json?ref=${branch}`;
+    
+    try {
+        // 先获取文件的 SHA（如果存在）
+        let sha = null;
+        const getResponse = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
+        });
+        
+        if (getResponse.ok) {
+            const existing = await getResponse.json();
+            sha = existing.sha;
+        } else if (getResponse.status !== 404) {
+            console.warn('GitHub 查询文件失败:', getResponse.status);
+            return false;
+        }
+        
+        // 准备上传内容
+        const content = JSON.stringify(records, null, 2);
+        const encodedContent = btoa(unescape(encodeURIComponent(content)));
+        
+        const body = {
+            message: `Timing: 同步专注记录 (${new Date().toLocaleString()})`,
+            content: encodedContent,
+            branch: branch
+        };
+        
+        if (sha) {
+            body.sha = sha;
+        }
+        
+        const putUrl = `https://api.github.com/repos/${repo}/contents/data/records.json`;
+        const putResponse = await fetch(putUrl, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(body)
+        });
+        
+        if (putResponse.ok) {
+            console.log('✅ 已同步到 GitHub');
+            return true;
+        } else {
+            const err = await putResponse.json().catch(() => ({}));
+            console.error('GitHub 上传失败:', putResponse.status, err);
+            return false;
+        }
+        
+    } catch (err) {
+        console.error('GitHub 写入失败:', err);
+        return false;
+    }
+}
+
 // ================= 历史记录与导出逻辑 =================
 
-// 1. 保存并退出 (Save & Exit)
 // 1. 保存并退出 (Save & Exit)
 function saveAndExit() {
     // 1. 获取输入内容
     const note = document.getElementById('summary-note').value;
     
     // 【关键修改】：
-    // 之前是抓取 #timer-task-name (它会被动画改成“大爆炸”等)
+    // 之前是抓取 #timer-task-name (它会被动画改成"大爆炸"等)
     // 现在改为抓取 #task-input (用户最初在设置页填写的真实任务)
     const taskName = document.getElementById('task-input').value.trim() || '专注时刻';
     
@@ -1844,51 +2156,88 @@ function saveAndExit() {
     localStorage.setItem('immersiveHistory', JSON.stringify(historyList));
 
     // 6. 更新简易下拉历史 (taskHistory)
-    // 注意：startFocus 时已经记过一次了，这里如果不想重复计数，可以注释掉下面这几行
     if (typeof saveTaskToHistory === 'function') {
         saveTaskToHistory(taskName);
     }
 
-    // 7. 关闭弹窗
+    // 7. 同步到 GitHub 云端（异步，不影响主流程）
+    if (isGitHubConfigured()) {
+        pushToCloud(historyList).then(success => {
+            if (success) {
+                console.log('☁️ 已同步到云端');
+            } else {
+                console.warn('⚠️ 云端同步失败，数据已保存在本地');
+            }
+        }).catch(err => {
+            console.warn('⚠️ 云端同步异常:', err);
+        });
+    }
+
+    // 8. 关闭弹窗
     closeSummary(true);
 
-    // 8. 调用停止函数以返回主页
+    // 9. 调用停止函数以返回主页
     stopTimer(); 
 }
 
-// 2. 打开历史记录列表
-// 修改：打开历史记录列表 (增加了 index 参数用于删除定位)
-function openHistoryModal() {
-    const list = JSON.parse(localStorage.getItem('immersiveHistory')) || [];
+// 2. 打开历史记录列表 (现在支持从云端拉取)
+async function openHistoryModal() {
     const container = document.getElementById('history-list-content');
+    container.innerHTML = '<div class="empty-tip">正在加载...</div>';
     
-    if (list.length === 0) {
+    document.getElementById('history-overlay').classList.add('open');
+    document.getElementById('history-modal').classList.add('active');
+    
+    // 尝试从云端拉取数据
+    let cloudList = null;
+    if (isGitHubConfigured()) {
+        cloudList = await fetchCloudData();
+    }
+    
+    // 获取本地数据
+    const localList = JSON.parse(localStorage.getItem('immersiveHistory')) || [];
+    
+    // 合并云端和本地数据
+    let mergedList;
+    if (cloudList !== null) {
+        mergedList = mergeCloudAndLocal(cloudList, localList);
+        // 将合并后的数据写回本地，保持同步
+        localStorage.setItem('immersiveHistory', JSON.stringify(mergedList));
+    } else {
+        mergedList = localList;
+    }
+    
+    // 渲染
+    if (mergedList.length === 0) {
         container.innerHTML = '<div class="empty-tip">暂无学习记录</div>';
     } else {
         let html = '';
-        // 遍历时加上 index，方便删除
-        list.forEach((item, index) => {
+        mergedList.forEach((item, index) => {
             html += `
                 <div class="history-row">
-                    <!-- 删除按钮：传入 index -->
                     <div class="btn-delete-record" onclick="deleteHistoryItem(${index})" title="删除此条">×</div>
                     
                     <div class="history-row-top">
-                        <span>${item.task}</span>
-                        <span>${item.duration}</span>
+                        <span>${escapeHtml(item.task)}</span>
+                        <span>${escapeHtml(item.duration)}</span>
                     </div>
                     <div class="history-row-mid">
-                        <span>${item.startTime}</span>
+                        <span>${escapeHtml(item.startTime)}</span>
                     </div>
-                    ${item.note ? `<div class="history-note">📝 ${item.note}</div>` : ''}
+                    ${item.note ? `<div class="history-note">📝 ${escapeHtml(item.note)}</div>` : ''}
                 </div>
             `;
         });
         container.innerHTML = html;
     }
+}
 
-    document.getElementById('history-overlay').classList.add('open');
-    document.getElementById('history-modal').classList.add('active');
+// HTML 转义辅助函数
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // 新增：删除单条历史记录 (无确认)
@@ -1900,6 +2249,15 @@ function deleteHistoryItem(index) {
     
     // 保存回本地
     localStorage.setItem('immersiveHistory', JSON.stringify(list));
+    
+    // 同步到 GitHub 云端
+    if (isGitHubConfigured()) {
+        pushToCloud(list).then(success => {
+            if (success) {
+                console.log('☁️ 删除已同步到云端');
+            }
+        });
+    }
     
     // 立即重新渲染列表
     openHistoryModal();
@@ -1958,7 +2316,7 @@ function resetAllTextAnims() {
         timerContent.style.opacity = '1';
         
         // 【关键改动】：这里千万不要移除 initial-mode！
-        // 否则正常模式下的“开场大字动画”会被瞬间破坏。
+        // 否则正常模式下的"开场大字动画"会被瞬间破坏。
         
         timerContent.classList.remove('rotate-out');
         timerContent.style.transition = ''; 
