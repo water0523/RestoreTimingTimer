@@ -1297,7 +1297,7 @@
         <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.3</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.4</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1339,7 +1339,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.2.3';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.2.4';   // 版本号（改动记录见 README.md）
         let endTimerHandle = null;     // 到点提醒的兜底 setTimeout
         let titleFlashTimer = null;    // 标签页标题闪烁定时器
         const BASE_TITLE = document.title;
@@ -1937,11 +1937,15 @@ function stopTimer() {
         // ================= 3. 背景与文字切换 =================
 
 // 替换 updateResource 函数
-// 图片缓存：只预热邻近的几张，避免像原来那样把全部原图（约 141MB）拉进内存。
-// 并且给缓存加上限：一次 8 小时的会话会走完 24 张图，全留在内存里等于几百 MB 解码位图。
+// 图片策略：
+//   1) 页面加载后把 24 张 WebP（合计约 7.4MB）全部拉进浏览器 HTTP 缓存 —— 切图不再等下载；
+//   2) 但只把"正在用的邻近几张"作为 Image 对象长期持有（IMG_CACHE_MAX），
+//      因为 24 张 2560px 解码位图约几百 MB，全留着会吃内存；
+//      预加载用临时 Image 对象，塞进缓存后即可被回收，切换时从磁盘缓存秒读。
 const imgCache = {};
 const imgCacheOrder = [];
 const IMG_CACHE_MAX = 6;
+const IMG_RETRY_DELAY_MS = 1500;   // 加载失败后多久重试一次
 // 【修复】切图令牌：每切一次图就自增，过期的异步回调直接丢弃。
 // 否则快速连续切图（拖开发者模式时间轴、连按右 Ctrl+→）时，
 // "还没加载完的旧图"回调会在新图之后才执行，把背景又改回旧图，
@@ -1959,7 +1963,17 @@ function ensureImage(index) {
         return imgCache[index];
     }
     const img = new Image();
-    img.onerror = () => console.warn('背景图加载失败:', resources[index].img);
+    let retried = false;
+    img.onerror = () => {
+        // 【加固】偶发的网络抖动不该让某张背景永久加载不出来：失败后重试一次
+        if (retried) {
+            console.warn('背景图加载失败（已重试）:', resources[index].img);
+            return;
+        }
+        retried = true;
+        console.warn('背景图加载失败，稍后重试:', resources[index].img);
+        setTimeout(() => { img.src = resources[index].img; }, IMG_RETRY_DELAY_MS);
+    };
     img.src = resources[index].img;   // 交给浏览器 HTTP 缓存，之后切换直接命中
     imgCache[index] = img;
     imgCacheOrder.push(index);
@@ -1977,6 +1991,42 @@ function preloadAround(index) {
         const safe = ((i % resources.length) + resources.length) % resources.length;
         ensureImage(safe);
     });
+}
+
+// ================= 一次性预加载全部背景图 =================
+// 把 24 张 WebP（合计约 7.4MB）全部拉进浏览器 HTTP 缓存，切换背景时直接命中，
+// 不会出现"图还没下完 -> 背景不换"的空档。
+// 用小并发串行推进，避免 24 个请求同时挤占带宽、把首屏那张挤在后面。
+const PRELOAD_CONCURRENCY = 4;
+let preloadAllState = { started: false, done: 0, total: 0 };
+
+function preloadAllImagesInBackground() {
+    if (preloadAllState.started) return;      // 只跑一次
+    preloadAllState = { started: true, done: 0, total: resources.length };
+
+    const queue = resources.map((_, i) => i);
+
+    const startNext = () => {
+        if (queue.length === 0) return;
+        const index = queue.shift();
+        // 临时对象：只为了让浏览器把这张图存进 HTTP 缓存，加载完就不再有引用
+        const img = new Image();
+        const done = () => {
+            preloadAllState.done += 1;
+            if (preloadAllState.done === preloadAllState.total) {
+                console.log(`背景图已全部预加载（${preloadAllState.total} 张）`);
+            }
+            startNext();
+        };
+        img.onload = done;
+        img.onerror = () => {
+            console.warn('背景图预加载失败:', resources[index].img);
+            done();
+        };
+        img.src = resources[index].img;
+    };
+
+    for (let i = 0; i < PRELOAD_CONCURRENCY; i++) startNext();
 }
 
 function updateResource(idx, isFirstLoad = false) {
@@ -3569,6 +3619,7 @@ function importBackup(inputElement) {
         window.addEventListener('load', () => {
             ensureImage(0);
             ensureImage(1);
+            preloadAllImagesInBackground();   // 24 张图一次性拉进浏览器缓存
         });
 
         // 打开页面时回填上次的任务名和时长
