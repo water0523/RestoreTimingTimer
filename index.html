@@ -1297,7 +1297,7 @@
         <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.6</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.7</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1339,7 +1339,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.2.6';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.2.7';   // 版本号（改动记录见 README.md）
         let endTimerHandle = null;     // 到点提醒的兜底 setTimeout
         let titleFlashTimer = null;    // 标签页标题闪烁定时器
         const BASE_TITLE = document.title;
@@ -1439,9 +1439,9 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         }
 
         function initPicker() {
-            // 生成小时 (0-12)
+            // 生成小时 (0-8：计时器上限 8 小时)
             let hHtml = '<div class="picker-placeholder"></div>';
-            for(let i=0; i<=12; i++) hHtml += `<div class="picker-item" data-v="${i}">${i}</div>`;
+            for(let i=0; i<=8; i++) hHtml += `<div class="picker-item" data-v="${i}">${i}</div>`;
             hHtml += '<div class="picker-placeholder"></div>';
             document.getElementById('hour-content').innerHTML = hHtml;
 
@@ -1511,6 +1511,8 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         }
 
         // ================= 记住上次设置（任务名 / 时长） =================
+        const MAX_DURATION_MINUTES = 480;   // 计时上限 8 小时
+
         function persistLastSetup() {
             // 【修复】开发者模式（water 后门）会把 480 分钟和 "Developer Testing"
             // 写进"上次设置"，下次正常打开就变成 8 小时。调试状态不参与记忆。
@@ -1543,9 +1545,11 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
 
         // 把时长同步到设置页的显示（数值 + 单位 + 下划线 + 提示语颜色）
         function applyDurationDisplay(minutes, hintText) {
-            totalDurationMinutes = minutes;
+            // 上限 8 小时（旧的本地设置/暂存里可能还留着更大的值，这里统一收口）
+            const mins = Math.min(Math.max(1, Math.round(minutes)), MAX_DURATION_MINUTES);
+            totalDurationMinutes = mins;
 
-            const displayVal = (minutes / 60).toFixed(1);
+            const displayVal = (mins / 60).toFixed(1);
             const displayEl = document.getElementById('display-hours');
             const unitEl = document.getElementById('display-unit');
 
@@ -1560,7 +1564,7 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
             if (hintText) {
                 hintEl.innerText = hintText;
             } else {
-                calculateEndTime(minutes);    // 计算并显示结束时间
+                calculateEndTime(mins);       // 计算并显示结束时间
             }
 
             persistLastSetup();
@@ -2600,7 +2604,7 @@ function resumeSuspended() {
     if (!item) { renderResumeBar(); return; }
 
     const data = item.data;
-    totalDurationMinutes = Math.max(1, Math.round(data.totalMinutes));
+    totalDurationMinutes = Math.min(Math.max(1, Math.round(data.totalMinutes)), MAX_DURATION_MINUTES);
     elapsedMs = Math.max(0, Math.min(data.elapsedMs, totalDurationMinutes * 60000));
     sessionStartTimeObj = new Date(data.startTime || Date.now());
     imageOffset = Math.max(0, data.imageOffset || 0);
@@ -3244,7 +3248,7 @@ function renderHistorySummary(list) {
 }
 
 // ================= 使用热力图（类似 GitHub 贡献图） =================
-// 灰 = 当天没用过；蓝 = 用过；紫 = 当天累计超过 4 小时；红 = 超过 8 小时
+// 灰 = 当天没用过；蓝 = 用过；紫 = 当天累计超过 4 小时；红 = 达到 8 小时
 const HEATMAP_WEEKS = 18;   // 展示最近 18 周（约 4 个月），列 = 周（周一为一周开始），行 = 星期
 
 function formatDayKey(date) {
@@ -3267,7 +3271,7 @@ function buildDailyStats(list) {
 
 function heatLevel(stats) {
     if (!stats || stats.count === 0) return 0;        // 没用过
-    if (stats.seconds > 8 * 3600) return 3;           // 超过 8 小时
+    if (stats.seconds >= 8 * 3600) return 3;          // 达到 8 小时（计时上限就是 8 小时，所以是"达到"而不是"超过"）
     if (stats.seconds > 4 * 3600) return 2;           // 超过 4 小时
     return 1;                                         // 用过（哪怕只有几秒）
 }
@@ -3349,7 +3353,7 @@ function renderHeatmap(list) {
                 <span class="heatmap-title">专注热力图</span>
                 <span class="heatmap-head-right">
                     ${streakHtml}
-                    <span class="heatmap-help" title="灰 = 当天没用过；蓝 = 用过；紫 = 当天超过 4 小时；红 = 超过 8 小时。点圆点看当天明细。">?</span>
+                    <span class="heatmap-help" title="灰 = 当天没用过；蓝 = 用过；紫 = 当天超过 4 小时；红 = 当天满 8 小时。点圆点看当天明细。">?</span>
                 </span>
             </div>
             <div class="heatmap-body">
@@ -3368,7 +3372,7 @@ function renderHeatmap(list) {
                 <span><i data-level="0"></i>未使用</span>
                 <span><i data-level="1"></i>已使用</span>
                 <span><i data-level="2"></i>超 4 小时</span>
-                <span><i data-level="3"></i>超 8 小时</span>
+                <span><i data-level="3"></i>满 8 小时</span>
             </div>
             <div class="hm-detail" id="hm-detail">点一个圆点查看当天明细</div>
         </div>
