@@ -1297,7 +1297,7 @@
         <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.2</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.3</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1339,7 +1339,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.2.2';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.2.3';   // 版本号（改动记录见 README.md）
         let endTimerHandle = null;     // 到点提醒的兜底 setTimeout
         let titleFlashTimer = null;    // 标签页标题闪烁定时器
         const BASE_TITLE = document.title;
@@ -2623,8 +2623,10 @@ function activateDevMode() {
     totalDurationMinutes = 480; 
     devContainer.style.display = 'block';
     
-    if(!taskInput.value || taskInput.value === 'water') {
-        taskInput.value = "Developer Testing"; 
+    // 【改】不再写 "Developer Testing" 占位：
+    // 清空任务名，计时页那一行改成显示当前时期名（大爆炸 / 侏罗纪…）
+    if (!taskInput.value || taskInput.value.trim().toLowerCase() === 'water') {
+        taskInput.value = '';
     }
 
     // 正常启动
@@ -2639,7 +2641,18 @@ function activateDevMode() {
     }
     // ------------------
 
+    // 直接显示当前阶段的名称与文案（拖时间轴会跟着换）
+    showCurrentStageText();
+
     console.log("开发者模式已激活：时间轴已开启");
+}
+
+// 把"当前这一圈对应的时期名/文案"写到计时页上
+function showCurrentStageText() {
+    const data = resources[((currentResIndex % resources.length) + resources.length) % resources.length];
+    if (!data) return;
+    timerTaskName.innerText = data.title;
+    alternatingText.innerText = data.quote;
 }
 
 // 3. 时间轴拖动监听 (修改版：无缝穿梭，不暂停)
@@ -2674,10 +2687,8 @@ devSlider.addEventListener('input', (e) => {
         lastCycleIndex = correctCycleIndex;    // 和自动切图保持同一套索引基准
         updateResource(currentResIndex, true); 
         
-        // 强制刷新文字内容
-        const data = resources[currentResIndex % resources.length];
-        timerTaskName.innerText = data.title;
-        alternatingText.innerText = data.quote;
+        // 强制刷新文字内容（显示这个时期的名字与文案）
+        showCurrentStageText();
     }
 
     // 4. 【关键】防抖：松开滑块 1 秒后，把文字交还给时间轴驱动的呼吸逻辑
