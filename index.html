@@ -1297,7 +1297,7 @@
         <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.4</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.5</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1339,7 +1339,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.2.4';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.2.5';   // 版本号（改动记录见 README.md）
         let endTimerHandle = null;     // 到点提醒的兜底 setTimeout
         let titleFlashTimer = null;    // 标签页标题闪烁定时器
         const BASE_TITLE = document.title;
@@ -1987,6 +1987,8 @@ function ensureImage(index) {
 }
 
 function preloadAround(index) {
+    // 开发者模式是"来回跳"，预热邻居只会给当前这张添堵（请求排在后面），直接跳过
+    if (isDevMode) return;
     [index - 1, index + 1, index + 2].forEach((i) => {
         const safe = ((i % resources.length) + resources.length) % resources.length;
         ensureImage(safe);
@@ -1994,42 +1996,87 @@ function preloadAround(index) {
 }
 
 // ================= 一次性预加载全部背景图 =================
-// 把 24 张 WebP（合计约 7.4MB）全部拉进浏览器 HTTP 缓存，切换背景时直接命中，
-// 不会出现"图还没下完 -> 背景不换"的空档。
-// 用小并发串行推进，避免 24 个请求同时挤占带宽、把首屏那张挤在后面。
-const PRELOAD_CONCURRENCY = 4;
-let preloadAllState = { started: false, done: 0, total: 0 };
+// 把 24 张 WebP（合计约 7.4MB）拉进浏览器 HTTP 缓存，切换背景时直接命中。
+// 三个要点（都是为了避免"和当前要显示的那张抢连接"）：
+//   1) 用 fetch(priority:'low') 走低优先级，浏览器会把正常优先级的图片请求排在前面；
+//   2) 开发者模式来回跳时间轴时直接中止预加载，带宽全让给当前这张；
+//   3) 只长期持有邻近几张 Image 对象，避免 24 张解码位图常驻内存。
+const PRELOAD_CONCURRENCY = 3;
+const PRELOAD_GAP_MS = 120;
+let preloadState = { started: false, aborted: false, done: 0, total: 0 };
+let preloadAbort = null;
+const preloadTimers = new Set();
 
-function preloadAllImagesInBackground() {
-    if (preloadAllState.started) return;      // 只跑一次
-    preloadAllState = { started: true, done: 0, total: resources.length };
-
-    const queue = resources.map((_, i) => i);
-
-    const startNext = () => {
-        if (queue.length === 0) return;
-        const index = queue.shift();
-        // 临时对象：只为了让浏览器把这张图存进 HTTP 缓存，加载完就不再有引用
-        const img = new Image();
-        const done = () => {
-            preloadAllState.done += 1;
-            if (preloadAllState.done === preloadAllState.total) {
-                console.log(`背景图已全部预加载（${preloadAllState.total} 张）`);
-            }
-            startNext();
-        };
-        img.onload = done;
-        img.onerror = () => {
-            console.warn('背景图预加载失败:', resources[index].img);
-            done();
-        };
-        img.src = resources[index].img;
-    };
-
-    for (let i = 0; i < PRELOAD_CONCURRENCY; i++) startNext();
+// 中止预加载（开发者模式进入时调用）：已经在缓存的保留，未发的请求不再发
+function stopAllPreload() {
+    if (preloadAbort) {
+        try { preloadAbort.abort(); } catch (err) { /* 忽略 */ }
+        preloadAbort = null;
+    }
+    preloadTimers.forEach((t) => clearTimeout(t));
+    preloadTimers.clear();
+    if (preloadState.started) preloadState.aborted = true;
 }
 
-function updateResource(idx, isFirstLoad = false) {
+function preloadAllImagesInBackground() {
+    if (preloadState.started && !preloadState.aborted) return;   // 正在跑或已跑完
+    // 每一轮用独立的计数对象：被中止后重启时，上一轮还在途中的回调不能算进新一轮
+    const run = { started: true, aborted: false, done: 0, total: resources.length };
+    preloadState = run;
+    preloadAbort = (typeof AbortController === 'function') ? new AbortController() : null;
+
+    const queue = resources.map((_, i) => i);
+    let active = 0;
+
+    const pump = () => {
+        if (run.aborted) return;
+        while (active < PRELOAD_CONCURRENCY && queue.length > 0) {
+            const index = queue.shift();
+            active += 1;
+            loadOneForCache(index).then(() => {
+                active -= 1;
+                if (run !== preloadState) return;   // 上一轮的残留回调，丢弃
+                run.done += 1;
+                if (run.done === run.total) {
+                    console.log(`背景图已全部预加载（${run.total} 张）`);
+                }
+                if (queue.length > 0 && !run.aborted) {
+                    const t = setTimeout(() => { preloadTimers.delete(t); pump(); }, PRELOAD_GAP_MS);
+                    preloadTimers.add(t);
+                }
+            });
+        }
+    };
+    pump();
+}
+
+// 只为了让浏览器把这张图写进缓存；失败也不要紧（真正切图时还有一次重试兜底）
+function loadOneForCache(index) {
+    const url = resources[index].img;
+    const signal = preloadAbort ? preloadAbort.signal : undefined;
+
+    // fetch 可以指定低优先级，也能被 abort 掉；不支持时退回 Image
+    if (typeof fetch === 'function') {
+        return fetch(url, { priority: 'low', signal })
+            .then((res) => {
+                if (!res || !res.ok) throw new Error('HTTP ' + (res && res.status));
+                return true;
+            })
+            .catch(() => loadOneByImage(url));
+    }
+    return loadOneByImage(url);
+}
+
+function loadOneByImage(url) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(true);
+        img.onerror = () => { console.warn('背景图预加载失败:', url); resolve(false); };
+        img.src = url;
+    });
+}
+
+function updateResource(idx, isFirstLoad = false, stageTextNow = false) {
     // 确保索引在范围内
     const safeIndex = ((idx % resources.length) + resources.length) % resources.length;
     const data = resources[safeIndex];
@@ -2041,6 +2088,13 @@ function updateResource(idx, isFirstLoad = false) {
     const applyBackground = () => {
         if (token !== resourceApplyToken) return;   // 已经被更新的切图取代，丢弃这个过期回调
         bgLayer.style.backgroundImage = `url('${data.img}')`;
+        // 【关键】需要"图和文字一起切"的场景（开发者模式拖时间轴 / 续上一次），
+        // 文字就在这里改：图片没到位之前，时期名会保持和画面上那张图一致，
+        // 不会再出现"文字已经跳到太古代、图还是大爆炸"。
+        if (stageTextNow) {
+            timerTaskName.innerText = data.title;
+            alternatingText.innerText = data.quote;
+        }
     };
     if (img.complete && img.naturalWidth > 0) {
         applyBackground();
@@ -2514,12 +2568,12 @@ function resumeSuspended() {
     timerContent.style.transform = '';
     timerContent.classList.remove('rotate-out');
 
-    timerTaskName.innerText = taskNameInput.value;
     alternatingText.classList.remove('hidden');
 
     lastCycleIndex = Math.floor(elapsedMs / CYCLE_MS);
     currentResIndex = lastCycleIndex + imageOffset;
-    updateResource(currentResIndex, true);
+    // 时期名和图片一起显示（第三个参数 = 立刻写文字），保证两者一致
+    updateResource(currentResIndex, true, true);
     updateTimerUI(elapsedMs);
 
     removeSessionState(item.key);   // 用掉的那一份清掉（另一份还留着）
@@ -2669,7 +2723,11 @@ taskInput.addEventListener('keydown', (e) => {
 // 2. 激活开发者模式函数
 function activateDevMode() {
     isDevMode = true;
-    
+
+    // 【关键】开发者模式要来回跳时间轴：先让预加载让路。
+    // 否则二十多个后台请求会把"当前这张图"挤到队尾，表现就是加载不出来、文字和图片对不上。
+    stopAllPreload();
+
     totalDurationMinutes = 480; 
     devContainer.style.display = 'block';
     
@@ -2691,10 +2749,10 @@ function activateDevMode() {
     }
     // ------------------
 
-    // 直接显示当前阶段的名称与文案（拖时间轴会跟着换）
-    showCurrentStageText();
+    // 图片和时期名一起显示（图片没到位之前不会先跳文字）
+    updateResource(currentResIndex, true, true);
 
-    console.log("开发者模式已激活：时间轴已开启");
+    console.log("开发者模式已激活：时间轴已开启（预加载已暂停）");
 }
 
 // 把"当前这一圈对应的时期名/文案"写到计时页上
@@ -2703,6 +2761,30 @@ function showCurrentStageText() {
     if (!data) return;
     timerTaskName.innerText = data.title;
     alternatingText.innerText = data.quote;
+}
+
+// 开发者模式拖时间轴：图片和时期名必须一起切。
+//   - 这张图已经在内存里 -> 立刻切；
+//   - 还没缓存 -> 等拖动停 120ms 再拉。
+//     否则快速拖动会一次性发出十几二十个请求，当前这张排在队尾，越拖越久都换不出来。
+let stageApplyTimer = null;
+function scheduleStageApply(index) {
+    const safe = ((index % resources.length) + resources.length) % resources.length;
+    const cached = imgCache[safe];
+    const ready = cached && cached.complete && cached.naturalWidth > 0;
+
+    if (stageApplyTimer) {
+        clearTimeout(stageApplyTimer);
+        stageApplyTimer = null;
+    }
+    if (ready) {
+        updateResource(index, true, true);
+        return;
+    }
+    stageApplyTimer = setTimeout(() => {
+        stageApplyTimer = null;
+        updateResource(index, true, true);
+    }, 120);
 }
 
 // 3. 时间轴拖动监听 (修改版：无缝穿梭，不暂停)
@@ -2735,10 +2817,7 @@ devSlider.addEventListener('input', (e) => {
         imageOffset = 0;                       // 拖动跳转时回到"时间轴原始图"
         currentResIndex = correctCycleIndex;
         lastCycleIndex = correctCycleIndex;    // 和自动切图保持同一套索引基准
-        updateResource(currentResIndex, true); 
-        
-        // 强制刷新文字内容（显示这个时期的名字与文案）
-        showCurrentStageText();
+        scheduleStageApply(currentResIndex);   // 图片和时期名一起切（已缓存就立刻，没缓存等拖停）
     }
 
     // 4. 【关键】防抖：松开滑块 1 秒后，把文字交还给时间轴驱动的呼吸逻辑
@@ -2762,6 +2841,9 @@ function exitDevMode() {
     //    而 stopTimer() 会先把 pauseBtn 复位成"暂停"，于是走进 else 分支，
     //    把已经停掉的会话又启动了一次（后台出现幽灵计时，8 小时后还会弹总结框）。
     //    调试条本身不会暂停会话，所以这里不需要也不应该碰运行状态。
+
+    // 4. 退出开发者模式后，把刚才让路的预加载接着跑完（已经是缓存命中的会很快过掉）
+    preloadAllImagesInBackground();
 }
 
 // ================= GitHub 云同步功能 =================
