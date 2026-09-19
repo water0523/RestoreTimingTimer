@@ -860,6 +860,30 @@
     font-size: 14px;
 }
 .history-row-top { display: flex; justify-content: space-between; margin-bottom: 4px; font-weight: bold; color: #333; }
+/* 历史记录里可点击修改的任务名 */
+.history-task {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: text;
+    border-bottom: 1px dashed transparent;
+}
+.history-task:hover { color: #2196F3; border-bottom-color: #90caf9; }
+.history-duration { flex: none; }
+.history-task-input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-weight: bold;
+    color: #333;
+    padding: 2px 6px;
+    border: 1px solid #2196F3;
+    border-radius: 6px;
+    outline: none;
+    background: #fff;
+}
 .history-row-mid { display: flex; justify-content: space-between; color: #888; font-size: 12px; }
 .history-note { margin-top: 6px; background: #f0f8ff; padding: 6px; border-radius: 4px; color: #555; font-size: 13px; }
 .empty-tip { text-align: center; padding: 30px; color: #999; }
@@ -1273,7 +1297,7 @@
         <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.1</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.2</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1315,7 +1339,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.2.1';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.2.2';   // 版本号（改动记录见 README.md）
         let endTimerHandle = null;     // 到点提醒的兜底 setTimeout
         let titleFlashTimer = null;    // 标签页标题闪烁定时器
         const BASE_TITLE = document.title;
@@ -1918,6 +1942,11 @@ function stopTimer() {
 const imgCache = {};
 const imgCacheOrder = [];
 const IMG_CACHE_MAX = 6;
+// 【修复】切图令牌：每切一次图就自增，过期的异步回调直接丢弃。
+// 否则快速连续切图（拖开发者模式时间轴、连按右 Ctrl+→）时，
+// "还没加载完的旧图"回调会在新图之后才执行，把背景又改回旧图，
+// 表现就是"拖了时间轴图片却不切换 / 乱切换"。
+let resourceApplyToken = 0;
 
 function ensureImage(index) {
     if (imgCache[index]) {
@@ -1958,7 +1987,9 @@ function updateResource(idx, isFirstLoad = false) {
     const img = ensureImage(safeIndex);
     preloadAround(safeIndex);
 
+    const token = ++resourceApplyToken;
     const applyBackground = () => {
+        if (token !== resourceApplyToken) return;   // 已经被更新的切图取代，丢弃这个过期回调
         bgLayer.style.backgroundImage = `url('${data.img}')`;
     };
     if (img.complete && img.naturalWidth > 0) {
@@ -1973,6 +2004,7 @@ function updateResource(idx, isFirstLoad = false) {
                 alternatingText.classList.add('hidden');
                 textHidden = true;                 // 与呼吸相位状态保持一致
                 setTimeout(() => {
+                    if (token !== resourceApplyToken) return;   // 已被更新的切图取代，别再改文字
                     timerTaskName.innerText = data.title;
                     alternatingText.innerText = data.quote;
                     // 【修复】只负责换内容，可见性交回给呼吸相位决定，
@@ -3175,18 +3207,22 @@ function renderHistoryList(list) {
     let html = renderHistorySummary(safeList) + renderHeatmap(safeList);
 
     if (safeList.length === 0) {
+        editingHistoryIndex = null;
         html += '<div class="empty-tip">暂无学习记录</div>';
         container.innerHTML = html;
         return;
     }
     safeList.forEach((item, index) => {
+        const editing = (index === editingHistoryIndex);
         html += `
             <div class="history-row">
                 <div class="btn-delete-record" onclick="deleteHistoryItem(${index})" title="删除此条">×</div>
                 
                 <div class="history-row-top">
-                    <span>${escapeHtml(item.task)}</span>
-                    <span>${escapeHtml(item.duration)}</span>
+                    ${editing
+                        ? `<input type="text" class="history-task-input" data-idx="${index}" maxlength="60" placeholder="任务名">`
+                        : `<span class="history-task" data-idx="${index}" title="点击可改任务名">${escapeHtml(item.task)}</span>`}
+                    <span class="history-duration">${escapeHtml(item.duration)}</span>
                 </div>
                 <div class="history-row-mid">
                     <span>${escapeHtml(item.startTime)}</span>
@@ -3197,6 +3233,8 @@ function renderHistoryList(list) {
     });
     container.innerHTML = html;
 
+    bindHistoryTaskEditors(container, safeList);
+
     // 热力图：点圆点看当天明细（事件委托，避免给每个格子挂监听）
     const grid = container.querySelector('.hm-grid');
     if (grid && grid.addEventListener) {
@@ -3206,6 +3244,76 @@ function renderHistoryList(list) {
             if (cell && !cell.classList.contains('hm-empty')) showHeatmapDetail(cell);
         });
     }
+}
+
+// ================= 修改历史记录的任务名（标题） =================
+// 点任务名进入编辑态：Enter 保存、Esc 取消、点到别处（失焦）也保存。
+let editingHistoryIndex = null;
+
+function startEditHistoryTask(index) {
+    editingHistoryIndex = index;
+    renderHistoryList(readHistory());
+}
+
+function cancelEditHistoryTask() {
+    if (editingHistoryIndex === null) return;
+    editingHistoryIndex = null;
+    renderHistoryList(readHistory());
+}
+
+function commitEditHistoryTask(index, value) {
+    if (editingHistoryIndex !== index) return;   // 已经取消或提交过了，别重复处理
+    editingHistoryIndex = null;
+    updateHistoryTask(index, value);
+}
+
+// 真正落库：只改任务名，其余字段原样保留
+function updateHistoryTask(index, newTitle) {
+    const list = readHistory();
+    const item = list[index];
+    if (!item) {
+        renderHistoryList(list);
+        return false;
+    }
+    const title = String(newTitle === null || newTitle === undefined ? '' : newTitle).trim();
+    if (!title || title === item.task) {
+        renderHistoryList(list);   // 空名字或没改动：还原显示
+        return false;
+    }
+    item.task = title;
+    localStorage.setItem('immersiveHistory', JSON.stringify(list));
+    if (isGitHubConfigured()) pushToCloud(list);
+    renderHistoryList(list);
+    return true;
+}
+
+// 把任务名接到编辑逻辑上；处于编辑态的那一行自动聚焦
+function bindHistoryTaskEditors(container, list) {
+    container.querySelectorAll('.history-task').forEach((span) => {
+        const idx = Number(span.getAttribute('data-idx'));
+        span.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            startEditHistoryTask(idx);
+        });
+    });
+
+    container.querySelectorAll('.history-task-input').forEach((input) => {
+        const idx = Number(input.getAttribute('data-idx'));
+        const item = list[idx];
+        input.value = item ? (item.task || '') : '';
+        input.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                commitEditHistoryTask(idx, input.value);
+            } else if (ev.key === 'Escape') {
+                ev.preventDefault();
+                cancelEditHistoryTask();
+            }
+        });
+        input.addEventListener('blur', () => commitEditHistoryTask(idx, input.value));
+        input.focus();
+        if (input.select) input.select();
+    });
 }
 
 // HTML 转义辅助函数
