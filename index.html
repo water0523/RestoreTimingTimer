@@ -23,6 +23,12 @@
             /* 保持输入框的光标正常显示 */
             cursor: text; 
         }
+        /* 【桌面端】弹窗里的文字允许选中复制（全局 user-select:none 会挡住复制） */
+        .history-list-container, .center-modal, .modal-info, .history-note,
+        .settings-field .help-text, .empty-tip {
+            user-select: text;
+            -webkit-user-select: text;
+        }
         body, html {
             margin: 0; padding: 0;
             width: 100%; height: 100%;
@@ -420,7 +426,6 @@
         }
 
         svg { transform: rotate(-90deg); width: 100%; height: 100%; }
-        svg { transform: rotate(-90deg); width: 100%; height: 100%; }
         circle { fill: none; stroke-width: 5; stroke-linecap: round; }
         .circle-bg { stroke: rgba(255,255,255,0.2); }
         .circle-progress { 
@@ -696,14 +701,6 @@
     transform: scale(1.2);
 }
 
-.dev-label {
-    color: #00ff00; /* 骇客绿，体现开发者模式 */
-    font-size: 12px;
-    margin-bottom: 5px;
-    font-family: monospace;
-    text-align: left;
-}
-
 #dev-slider {
     width: 100%;
     cursor: pointer;
@@ -720,6 +717,8 @@
     max-width: 400px;
     border-radius: 16px;
     padding: 24px;
+    max-height: 86vh;      /* 内容变多（热力图 + 列表）后仍然不超出屏幕 */
+    overflow-y: auto;
     z-index: 200;
     opacity: 0;
     visibility: hidden;
@@ -821,7 +820,8 @@
     border-top: 1px solid #eee;
 }
 .history-row {
-    padding: 12px 0;
+    position: relative;         /* 为了定位右侧删除按钮 */
+    padding: 12px 30px 12px 0;  /* 右边留出空间给删除按钮 */
     border-bottom: 1px solid #eee;
     font-size: 14px;
 }
@@ -833,10 +833,6 @@
 /* --- 优化：删除按钮样式 --- */
 
 /* 1. 专注历史列表的删除按钮 */
-.history-row {
-    position: relative; /* 为了定位删除按钮 */
-    padding-right: 30px; /* 留出右边空间给删除按钮 */
-}
 .btn-delete-record {
     position: absolute;
     top: 12px;
@@ -886,6 +882,146 @@
 .history-item-del:hover {
     color: #f44336; /* 悬停变红 */
     background: #fafafa;
+}
+
+/* 建议里的使用次数 */
+.history-item-count {
+    margin-left: 8px;
+    color: #bbb;
+    font-size: 12px;
+}
+
+/* 版本号 */
+.app-version {
+    margin-top: 14px;
+    text-align: center;
+    font-size: 12px;
+    color: #bbb;
+}
+
+/* 历史记录顶部的合计（滚动时吸顶，方便对照） */
+.history-summary {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
+    padding: 10px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 13px;
+    color: #444;
+}
+.history-summary-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #999;
+}
+
+/* ================= 专注热力图（类似 GitHub 贡献图） ================= */
+.heatmap {
+    margin: 14px 0 10px;
+}
+.heatmap-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.heatmap-title { font-size: 14px; font-weight: bold; color: #333; }
+.heatmap-head-right { display: flex; align-items: center; gap: 8px; }
+/* 连续使用天数的 ×N 徽章 */
+.hm-streak {
+    padding: 2px 8px;
+    border-radius: 8px;
+    background: #fff3e0;
+    color: #e8890c;
+    font-size: 13px;
+    font-weight: bold;
+    box-shadow: 0 0 0 2px #ffe6c7;
+}
+.hm-streak-mild {
+    background: #f5f5f5;
+    color: #999;
+    font-size: 11px;
+    font-weight: normal;
+    box-shadow: none;
+}
+.heatmap-help {
+    width: 18px; height: 18px; line-height: 18px;
+    text-align: center; border-radius: 50%;
+    background: #f0f0f0; color: #999; font-size: 12px; cursor: help;
+}
+.heatmap-body { display: flex; gap: 6px; }
+.hm-days {
+    display: grid;
+    grid-template-rows: repeat(7, 13px);
+    gap: 2px;
+    width: 14px;
+    margin-top: 18px;          /* 与月份标签那一行对齐 */
+    font-size: 11px;
+    color: #aaa;
+    text-align: right;
+}
+.hm-days span { line-height: 13px; }
+.hm-main { flex: 1; min-width: 0; }
+.hm-months {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 13px;
+    gap: 2px;
+    height: 16px;
+    margin-bottom: 2px;
+    font-size: 11px;
+    color: #888;
+}
+.hm-months span { line-height: 16px; white-space: nowrap; overflow: hidden; }
+.hm-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, 13px);
+    grid-auto-columns: 13px;
+    gap: 2px;
+}
+.hm-cell {
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: #eceff3;       /* 灰：当天没用过 */
+    cursor: pointer;
+    transition: transform 0.1s;
+}
+.hm-cell:hover { transform: scale(1.3); }
+.hm-cell[data-level="1"] { background: #79c0ff; }   /* 蓝：用过 */
+.hm-cell[data-level="2"] { background: #b197fc; }   /* 紫：超过 4 小时 */
+.hm-cell[data-level="3"] { background: #ff7b72; }   /* 红：超过 8 小时 */
+.hm-cell.hm-empty { background: transparent; cursor: default; }
+.hm-cell.hm-empty:hover { transform: none; }
+.hm-cell.hm-selected { box-shadow: 0 0 0 2px #f0a04b; }
+.hm-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #999;
+}
+.hm-legend span { display: inline-flex; align-items: center; }
+.hm-legend i {
+    display: inline-block;
+    width: 10px; height: 10px;
+    margin-right: 4px;
+    border-radius: 50%;
+    background: #eceff3;
+}
+.hm-legend i[data-level="1"] { background: #79c0ff; }
+.hm-legend i[data-level="2"] { background: #b197fc; }
+.hm-legend i[data-level="3"] { background: #ff7b72; }
+.hm-detail {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #f7f9fc;
+    font-size: 12px;
+    color: #555;
+    min-height: 18px;
 }
     </style>
 </head>
@@ -1094,47 +1230,54 @@
         <button class="btn-cancel-flat" onclick="closeSettingsModal()">取消</button>
         <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
     </div>
+
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
 // ================= 配置数据 (本地图片版) =================
 const resources = [
             // --- 第 1 组：宇宙与地球起源 ---
-            { img: './images/1.png', title: '大爆炸', quote: '宇宙由这一刻诞生，你的征程也由此开始。' },
-            { img: './images/2.png', title: '太阳系', quote: '太阳系正在慢慢形成，万事开头难。' },
-            { img: './images/3.png', title: '地球形成', quote: '孕育生命的摇篮，似乎有灵感涌上心头？' },
-            { img: './images/4.png', title: '太古代', quote: '第一个生命诞生了，是否得到了某种启发呢？' },
-            { img: './images/5.png', title: '震旦纪', quote: '进化是最伟大的馈赠，在不知不觉中，你正在感受进步。' },
-            { img: './images/6.png', title: '寒武纪', quote: '鱼类最活跃的时期，鱼儿水中游，时光一去不回头。' },
+            { img: './images/1.webp', title: '大爆炸', quote: '宇宙由这一刻诞生，你的征程也由此开始。' },
+            { img: './images/2.webp', title: '太阳系', quote: '太阳系正在慢慢形成，万事开头难。' },
+            { img: './images/3.webp', title: '地球形成', quote: '孕育生命的摇篮，似乎有灵感涌上心头？' },
+            { img: './images/4.webp', title: '太古代', quote: '第一个生命诞生了，是否得到了某种启发呢？' },
+            { img: './images/5.webp', title: '震旦纪', quote: '进化是最伟大的馈赠，在不知不觉中，你正在感受进步。' },
+            { img: './images/6.webp', title: '寒武纪', quote: '鱼类最活跃的时期，鱼儿水中游，时光一去不回头。' },
             
             // --- 第 2 组：古生物演化 ---
-            { img: './images/7.png', title: '奥陶纪', quote: '大陆板块形成，更大的挑战即将来临。' },
-            { img: './images/8.png', title: '泥盆纪', quote: '陆地的感觉好吗？请抓紧每一分钟。' },
-            { img: './images/9.png', title: '石炭纪', quote: '火山开始喷发，大型爬行动物诞生了，是否有所收获了？' },
-            { img: './images/10.png', title: '三叠纪', quote: '山峰丛林开始形成，注意静心。' },
-            { img: './images/11.png', title: '侏罗纪', quote: '恐龙横行的年代，保持专注，克服难关。' },
-            { img: './images/12.jpg', title: '白垩纪', quote: '恐龙灭绝，现在可以告一段落了。' },
+            { img: './images/7.webp', title: '奥陶纪', quote: '大陆板块形成，更大的挑战即将来临。' },
+            { img: './images/8.webp', title: '泥盆纪', quote: '陆地的感觉好吗？请抓紧每一分钟。' },
+            { img: './images/9.webp', title: '石炭纪', quote: '火山开始喷发，大型爬行动物诞生了，是否有所收获了？' },
+            { img: './images/10.webp', title: '三叠纪', quote: '山峰丛林开始形成，注意静心。' },
+            { img: './images/11.webp', title: '侏罗纪', quote: '恐龙横行的年代，保持专注，克服难关。' },
+            { img: './images/12.webp', title: '白垩纪', quote: '恐龙灭绝，现在可以告一段落了。' },
 
             // --- 第 3 组：人类文明发展 ---
-            { img: './images/13.png', title: '古代', quote: '人类的祖先在这篇大陆上开疆辟土，学习有时候需要互相帮助。' },
-            { img: './images/14.png', title: '部落', quote: '听说印第安人始终保持着这样的生活方式，今天的学习到这里也可以结束了。' },
-            { img: './images/15.png', title: '村庄', quote: '人类不再到处游荡，有了自己固定的"家"，记得回忆和巩固自己今天的学习。' },
-            { img: './images/16.png', title: '人群', quote: '人多力量大？前提是要有着共同的目标。' },
-            { img: './images/17.png', title: '近代', quote: '王国，朝代逐渐形成，注意归纳你所学的知识。' },
-            { img: './images/18.png', title: '现代', quote: '我们所生活的年代，注意劳逸结合。' },
+            { img: './images/13.webp', title: '古代', quote: '人类的祖先在这篇大陆上开疆辟土，学习有时候需要互相帮助。' },
+            { img: './images/14.webp', title: '部落', quote: '听说印第安人始终保持着这样的生活方式，今天的学习到这里也可以结束了。' },
+            { img: './images/15.webp', title: '村庄', quote: '人类不再到处游荡，有了自己固定的"家"，记得回忆和巩固自己今天的学习。' },
+            { img: './images/16.webp', title: '人群', quote: '人多力量大？前提是要有着共同的目标。' },
+            { img: './images/17.webp', title: '近代', quote: '王国，朝代逐渐形成，注意归纳你所学的知识。' },
+            { img: './images/18.webp', title: '现代', quote: '我们所生活的年代，注意劳逸结合。' },
 
             // --- 第 4 组：未来与终结 ---
-            { img: './images/19.png', title: '城市', quote: '繁荣时期，去做做别的事情吧。' },
-            { img: './images/20.png', title: '未来城市', quote: '人类科技的巅峰，每天的知识获取量是有限的。' },
-            { img: './images/21.png', title: '核爆炸', quote: '物极必反，人类如此，学习也是如此。' },
-            { img: './images/22.png', title: '地球毁灭', quote: '世界的尽头，它必将发生。过度的学习，会影响短期记忆。' },
-            { img: './images/23.png', title: '太阳毁灭', quote: '生命迹象消失，进入效率低下期。' },
-            { img: './images/24.png', title: '宇宙毁灭', quote: '生命迹象消失，进入效率低下期。' }
+            { img: './images/19.webp', title: '城市', quote: '繁荣时期，去做做别的事情吧。' },
+            { img: './images/20.webp', title: '未来城市', quote: '人类科技的巅峰，每天的知识获取量是有限的。' },
+            { img: './images/21.webp', title: '核爆炸', quote: '物极必反，人类如此，学习也是如此。' },
+            { img: './images/22.webp', title: '地球毁灭', quote: '世界的尽头，它必将发生。过度的学习，会影响短期记忆。' },
+            { img: './images/23.webp', title: '太阳毁灭', quote: '生命迹象消失，进入效率低下期。' },
+            { img: './images/24.webp', title: '宇宙毁灭', quote: '生命迹象消失，进入效率低下期。' }
         ];
 
         // ================= 全局变量 =================
 // ================= 全局变量 =================
-        let totalDurationMinutes = 60; // 默认 60 分钟
+        let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
+        const APP_VERSION = '1.2';     // 版本号（改动记录见 README.md）
+        let endTimerHandle = null;     // 到点提醒的兜底 setTimeout
+        let titleFlashTimer = null;    // 标签页标题闪烁定时器
+        const BASE_TITLE = document.title;
+        let lastTitleText = '';        // 缓存上一次写入的标题，避免每帧都改 document.title
         
         let isRunning = false;
         let sessionStartTimeObj = null; // 记录具体的开始日期时间对象
@@ -1275,6 +1418,13 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
 
         // 打开弹窗
         function openPicker() {
+            // 打开时先滚到当前已设的时长（没设过就停在 initPicker 给的默认位置）
+            if (totalDurationMinutes > 0) {
+                colHour.scrollTop = Math.floor(totalDurationMinutes / 60) * itemHeight;
+                colMinute.scrollTop = (totalDurationMinutes % 60) * itemHeight;
+                updateHighlight(colHour);
+                updateHighlight(colMinute);
+            }
             modalOverlay.classList.add('open');
             pickerModal.classList.add('open');
         }
@@ -1283,6 +1433,59 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         function closePicker() {
             modalOverlay.classList.remove('open');
             pickerModal.classList.remove('open');
+        }
+
+        // ================= 记住上次设置（任务名 / 时长） =================
+        function persistLastSetup() {
+            try {
+                localStorage.setItem('timing_lastTask', (taskNameInput.value || '').trim());
+                localStorage.setItem('timing_lastDurationMinutes', String(Math.round(totalDurationMinutes || 0)));
+            } catch (err) {
+                // 无痕模式等场景下可能写不了，忽略即可
+            }
+        }
+
+        // 打开页面时回填上次的任务名和时长
+        function restoreLastSetup() {
+            let lastTask = '';
+            let lastMinutes = 0;
+            try {
+                lastTask = localStorage.getItem('timing_lastTask') || '';
+                lastMinutes = parseInt(localStorage.getItem('timing_lastDurationMinutes') || '0', 10) || 0;
+            } catch (err) {
+                return;
+            }
+
+            if (lastTask) taskNameInput.value = lastTask;
+            if (lastMinutes > 0) {
+                // 不写死"结束时间"（页面放久了会过期），只提示已经记住了上次设置
+                applyDurationDisplay(lastMinutes, '已记住上次设置，点这里可修改');
+            }
+        }
+
+        // 把时长同步到设置页的显示（数值 + 单位 + 下划线 + 提示语颜色）
+        function applyDurationDisplay(minutes, hintText) {
+            totalDurationMinutes = minutes;
+
+            const displayVal = (minutes / 60).toFixed(1);
+            const displayEl = document.getElementById('display-hours');
+            const unitEl = document.getElementById('display-unit');
+
+            displayEl.innerText = displayVal; // 显示数字
+            unitEl.style.display = 'inline';  // 显示"小时"单位
+            // 给数字元素本身加下划线
+            displayEl.style.borderBottom = '2px solid #2196F3';
+            displayEl.style.paddingBottom = '4px';
+
+            const hintEl = document.getElementById('end-time-hint');
+            hintEl.style.color = '#dba859'; // 变成金/橙色
+            if (hintText) {
+                hintEl.innerText = hintText;
+            } else {
+                calculateEndTime(minutes);    // 计算并显示结束时间
+            }
+
+            persistLastSetup();
         }
 
         // 替换整个 confirmPicker 函数
@@ -1295,28 +1498,7 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
                 return;
             }
 
-            totalDurationMinutes = totalMins;
-            
-            // 1. 更新右侧数值显示
-            const displayVal = (totalMins / 60).toFixed(1);
-            const displayEl = document.getElementById('display-hours');
-            const unitEl = document.getElementById('display-unit');
-            
-            displayEl.innerText = displayVal; // 显示数字
-            unitEl.style.display = 'inline';  // 显示"小时"单位
-
-            // 删除或注释掉之前给父容器加线的代码：
-            // document.querySelector('.time-value-wrapper').style.borderBottom = '2px solid #2196F3';
-
-            // 改为：给数字元素本身加线，并加一点点底部内边距让线和字不挨太近
-            displayEl.style.borderBottom = '2px solid #2196F3';
-            displayEl.style.paddingBottom = '4px'; 
-            // 2. 更新左侧提示文字颜色和内容
-            const hintEl = document.getElementById('end-time-hint');
-            hintEl.style.color = '#dba859'; // 变成金/橙色
-            
-            calculateEndTime(totalMins); // 计算并显示结束时间
-
+            applyDurationDisplay(totalMins);
             closePicker();
         }
 
@@ -1331,12 +1513,27 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
 
 // 1. 开始专注
 function startFocus() {
-    // 保存历史记录
-    if(typeof saveTaskToHistory === 'function') saveTaskToHistory(taskNameInput.value);
+    // 1. 必须先设置时长（原来默认 60 分钟，界面上却显示"未设置"）
+    if (!totalDurationMinutes || totalDurationMinutes <= 0) {
+        alert('请先设置学习时长');
+        openPicker();
+        return;
+    }
 
-    if (totalDurationMinutes <= 0) return alert('请先设置时长');
-    
-    // 切换界面
+    // 2. 保存历史记录（供输入框的历史建议使用）
+    if (typeof saveTaskToHistory === 'function') saveTaskToHistory(taskNameInput.value);
+
+    // 3. 记住这次的任务名和时长，下次打开自动回填
+    persistLastSetup();
+
+    // 4. 记录本次真实开始时间
+    //    【修复】原来这行写在函数外面，导致历史记录里的开始时间 = 打开页面的时间
+    sessionStartTimeObj = new Date();
+
+    // 5. 结束时间提示按"现在"重算一遍（页面可能开了很久才点开始）
+    calculateEndTime(totalDurationMinutes);
+
+    // 6. 切换界面
     setupScreen.classList.remove('active');
     timerScreen.classList.add('active');
     
@@ -1370,17 +1567,26 @@ function startFocus() {
     // 立即开始
     startTimerLogic();
 }
-// 在 startFocus 函数内部，startTimerLogic() 之前添加：
-sessionStartTimeObj = new Date(); // 记录当前真实时间
+        // 让背景索引直接跟随"第几圈(20分钟)"，后台跳圈后能自愈
+        function syncResourceToCycle(cycleIndex) {
+            if (cycleIndex === lastCycleIndex) return;
+            lastCycleIndex = cycleIndex;
+            currentResIndex = cycleIndex;
+            updateResource(currentResIndex);
+        }
+
         // 2. 核心计时逻辑 (改为 requestAnimationFrame)
 function startTimerLogic() {
     if (isRunning) return;
     isRunning = true;
     pauseBtn.innerText = "暂停";
+    stopTitleFlash();
 
     startTime = performance.now();
+    scheduleEndTimer();   // 兜底提醒：不依赖 requestAnimationFrame
 
     const loop = () => {
+        if (!isRunning) return;   // 暂停/结束后残留的帧直接丢弃
         const now = performance.now();
         const currentSessionMs = now - startTime; 
         const totalCurrentMs = elapsedMs + currentSessionMs;
@@ -1389,6 +1595,7 @@ function startTimerLogic() {
 
         // 更新界面
         updateTimerUI(totalCurrentMs);
+        updateTitleTimer(totalCurrentMs);   // 标签页标题同步显示剩余时间
         
         // 【新增】开发者模式：滑块跟随自动更新
         if (isDevMode && devSlider) {
@@ -1396,14 +1603,10 @@ function startTimerLogic() {
         }
 
         // 检查切图逻辑 (每20分钟 = 1200秒)
-        const currentCycle = Math.floor(totalSeconds / 1200);
-        if (currentCycle > lastCycleIndex) {
-            lastCycleIndex = currentCycle;
-            if(typeof currentResIndex !== 'undefined') {
-                currentResIndex++;
-                updateResource(currentResIndex);
-            }
-        }
+        // 【修复】原来这里是 currentResIndex++：标签页切后台/电脑休眠/明显卡顿时 rAF 不跑，
+        // 回来无论跳过了几圈都只前进 1 张，背景会永久落后于实际进度（后台 2 小时就落后 5 张）。
+        // 改成直接用"第几圈"推导索引，跳过多少圈都能自动追上。
+        syncResourceToCycle(Math.floor(totalSeconds / 1200));
 
         // 检查结束
         if (totalSeconds >= totalDurationMinutes * 60) {
@@ -1474,10 +1677,12 @@ function startTimerLogic() {
                 // === 暂停 ===
                 isRunning = false;
                 pauseBtn.innerText = "继续";
+                setPausedTitle();
                 
                 // 停止动画帧
                 cancelAnimationFrame(animationFrameId);
                 clearInterval(textInterval);
+                clearEndTimer();
 
                 // 关键：把这段时间跑的毫秒数累加保存
                 const now = performance.now();
@@ -1496,6 +1701,8 @@ function stopTimer() {
     // 2. 清除核心循环
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     if (textInterval) clearInterval(textInterval);
+    clearEndTimer();
+    stopTitleFlash();
     
     // --- 【新增：必须手动杀死所有文字动画定时器】 ---
     resetAllTextAnims(); 
@@ -1514,29 +1721,112 @@ function stopTimer() {
     }
 }
 
-        function finishTimer() {
-            stopTimer();
-            alert('恭喜，专注任务完成！');
+        // ================= 结束时提醒的辅助函数 =================
+        // 【修复】requestAnimationFrame 在后台标签页会被节流甚至暂停，
+        // 单靠它无法保证"到点提醒"，所以额外挂一个 setTimeout 兜底。
+        function scheduleEndTimer() {
+            clearEndTimer();
+            const remainMs = totalDurationMinutes * 60 * 1000 - elapsedMs;
+            if (remainMs <= 0) return;
+            endTimerHandle = setTimeout(() => {
+                if (!isRunning) return;          // 已经手动结束了就不重复触发
+                elapsedMs = totalDurationMinutes * 60 * 1000;
+                updateTimerUI(elapsedMs);
+                isRunning = false;
+                finishTimer();
+            }, remainMs);
+        }
+
+        function clearEndTimer() {
+            if (endTimerHandle) {
+                clearTimeout(endTimerHandle);
+                endTimerHandle = null;
+            }
+        }
+
+        // 标签页标题闪烁，切到别的窗口时也能看到提醒
+        function startTitleFlash(text) {
+            stopTitleFlash();
+            let on = false;
+            titleFlashTimer = setInterval(() => {
+                on = !on;
+                document.title = on ? text : BASE_TITLE;
+            }, 900);
+        }
+
+        function stopTitleFlash() {
+            if (titleFlashTimer) {
+                clearInterval(titleFlashTimer);
+                titleFlashTimer = null;
+            }
+            lastTitleText = BASE_TITLE;
+            document.title = BASE_TITLE;
+        }
+
+        // 标签页标题实时显示剩余时间（如 "25:00 · 背单词"），切到别的标签页也能看到进度
+        function updateTitleTimer(totalCurrentMs) {
+            const remainMs = Math.max(0, totalDurationMinutes * 60 * 1000 - totalCurrentMs);
+            const remainSec = Math.ceil(remainMs / 1000);
+            const h = Math.floor(remainSec / 3600);
+            const m = Math.floor((remainSec % 3600) / 60);
+            const s = remainSec % 60;
+            const clock = h > 0
+                ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+                : `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+            const task = (taskNameInput.value || '').trim();
+            const text = task ? `${clock} · ${task}` : `${clock} · 专注中`;
+            if (text !== lastTitleText) {         // 只在秒数变化时才写，避免每帧都动标题
+                lastTitleText = text;
+                document.title = text;
+            }
+        }
+
+        // 暂停时把状态也写到标题上
+        function setPausedTitle() {
+            const task = (taskNameInput.value || '').trim();
+            const text = task ? `已暂停 · ${task}` : '已暂停';
+            lastTitleText = text;
+            document.title = text;
         }
 
         // ================= 3. 背景与文字切换 =================
 
 // 替换 updateResource 函数
+// 图片缓存：只预热邻近的几张，避免像原来那样把全部原图（约 141MB）拉进内存
+const imgCache = {};
+
+function ensureImage(index) {
+    if (imgCache[index]) return imgCache[index];
+    const img = new Image();
+    img.onerror = () => console.warn('背景图加载失败:', resources[index].img);
+    img.src = resources[index].img;   // 交给浏览器 HTTP 缓存，之后切换直接命中
+    imgCache[index] = img;
+    return img;
+}
+
+function preloadAround(index) {
+    [index - 1, index + 1, index + 2].forEach((i) => {
+        const safe = ((i % resources.length) + resources.length) % resources.length;
+        ensureImage(safe);
+    });
+}
+
 function updateResource(idx, isFirstLoad = false) {
     // 确保索引在范围内
-    const safeIndex = idx % resources.length;
+    const safeIndex = ((idx % resources.length) + resources.length) % resources.length;
     const data = resources[safeIndex];
-    
-    // === 修改点：优先使用内存里的 Blob 地址 ===
-    // 如果内存里有(loadedImages)，就用内存的；还没有就用原始的(data.img)
-    const finalImgUrl = loadedImages[safeIndex] || data.img;
-    
-    const tempImg = new Image();
-    tempImg.src = finalImgUrl;
-    
-    tempImg.onload = () => {
-        bgLayer.style.backgroundImage = `url('${finalImgUrl}')`;
+
+    const img = ensureImage(safeIndex);
+    preloadAround(safeIndex);
+
+    const applyBackground = () => {
+        bgLayer.style.backgroundImage = `url('${data.img}')`;
     };
+    if (img.complete && img.naturalWidth > 0) {
+        applyBackground();
+    } else {
+        img.addEventListener('load', applyBackground, { once: true });
+    }
             
             // 2. 如果不是第一次加载（中间自动切图），按正常逻辑淡入淡出
             if (!isFirstLoad) {
@@ -1615,44 +1905,85 @@ function startTextAnim() {
         }
 
         // 修改：渲染下拉菜单
+// 【修复】原来是用字符串拼 HTML 并内联 onmousedown="...('${name}')"：
+// 任务名里带单引号（如 don't）会直接弄坏这段 JS，带尖括号还会被当标签解析。
+// 现在改用 DOM API + textContent 构建，既没有引号问题也没有注入风险。
+// 【改】用过的任务都会进建议（原来要求用过 ≥2 次），并按输入内容做模糊筛选。
 function showHistoryDropdown() {
     const history = getHistory(); // 获取 {"背单词": 5, "看书": 2}
-    const list = [];
+    const query = (taskInput.value || '').trim().toLowerCase();
 
-    // 筛选：逻辑保持不变 (此处代码是 >=2，如果你想改成 >3，请把下面的 2 改成 4)
-    for (let [name, count] of Object.entries(history)) {
-        if (count >= 2) { 
-            list.push(name);
-        }
-    }
+    let names = Object.keys(history);
+    if (query) names = names.filter((name) => matchTaskName(name, query));
 
-    if (list.length === 0) {
+    // 用得多的排前面，最多显示 8 条，避免下拉菜单太长
+    names.sort((a, b) => (history[b] || 0) - (history[a] || 0));
+    names = names.slice(0, 8);
+
+    if (names.length === 0) {
         historyDropdown.style.display = 'none';
         return;
     }
 
-    // 生成 HTML：左右分栏结构
-    let html = '';
-    list.forEach(name => {
-        // 注意：onmousedown 比 onclick 更早触发，防止 blur 事件先执行导致无法点击
-        html += `
-            <div class="history-item">
-                <!-- 左边：点击填入文字 -->
-                <div class="history-item-text" onmousedown="selectHistory('${name}')">${name}</div>
-                <!-- 右边：点击删除 (传入 event 用于阻止冒泡) -->
-                <div class="history-item-del" onmousedown="deleteTaskSuggestion('${name}', event)">×</div>
-            </div>
-        `;
+    historyDropdown.innerHTML = '';
+    names.forEach((name) => {
+        const row = document.createElement('div');
+        row.className = 'history-item';
+
+        // 左边：点击填入文字
+        const text = document.createElement('div');
+        text.className = 'history-item-text';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'history-item-name';
+        nameSpan.textContent = name;
+
+        const countSpan = document.createElement('span');
+        countSpan.className = 'history-item-count';
+        countSpan.textContent = '×' + (history[name] || 0);
+
+        text.appendChild(nameSpan);
+        text.appendChild(countSpan);
+
+        // 用 mousedown 并阻止默认行为：比 blur 更早触发，而且不会让输入框失焦
+        text.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            selectHistory(name);
+        });
+
+        // 右边：点击删除
+        const del = document.createElement('div');
+        del.className = 'history-item-del';
+        del.textContent = '×';
+        del.title = '从建议中删除';
+        del.addEventListener('mousedown', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            deleteTaskSuggestion(name);
+        });
+
+        row.appendChild(text);
+        row.appendChild(del);
+        historyDropdown.appendChild(row);
     });
-    historyDropdown.innerHTML = html;
+
     historyDropdown.style.display = 'block';
 }
 
-// 新增：删除下拉建议 (无确认)
-function deleteTaskSuggestion(name, event) {
-    // 阻止事件冒泡，防止触发 input 的 blur 或其他点击事件
-    if (event) event.stopPropagation();
+// 模糊匹配：包含即命中；否则退化为"按顺序包含所有字符"（输入"背词"也能匹配到"背单词"）
+function matchTaskName(name, query) {
+    const lower = String(name).toLowerCase();
+    if (lower.indexOf(query) >= 0) return true;
+    let i = 0;
+    for (const ch of lower) {
+        if (ch === query[i]) i++;
+        if (i >= query.length) return true;
+    }
+    return false;
+}
 
+// 新增：删除下拉建议 (无确认)
+function deleteTaskSuggestion(name) {
     const history = getHistory();
     
     // 删除该属性
@@ -1693,7 +2024,13 @@ function deleteTaskSuggestion(name, event) {
         // 1. 输入框获得焦点时：尝试显示历史记录
         taskInput.addEventListener('focus', showHistoryDropdown);
 
-        // 2. 输入框失去焦点时：延迟隐藏（为了让点击事件能先触发）
+        // 2. 边打字边按输入内容筛建议
+        taskInput.addEventListener('input', showHistoryDropdown);
+
+        // 3. 记住输入过的任务名，下次打开自动回填
+        taskInput.addEventListener('change', persistLastSetup);
+
+        // 4. 输入框失去焦点时：延迟隐藏（为了让点击事件能先触发）
         taskInput.addEventListener('blur', () => {
             setTimeout(() => {
                 historyDropdown.style.display = 'none';
@@ -1711,9 +2048,11 @@ function confirmEnd() {
 
 // 2. 拦截自动倒计时结束
 function finishTimer() {
-    // 播放提示音或震动等...
-    alert('专注任务完成！请填写心得。'); // 可选
+    // 先弹总结弹窗，再点亮提醒（顺序不能反：showSummaryModal 里不再清标题）
     showSummaryModal();
+    // 桌面端提醒：标签页标题闪烁（本项目不播放任何声音）。
+    // 标题会一直闪到用户处理完这条记录（保存/不保存/按 Esc 都会停）。
+    startTitleFlash('⏰ 时间到！');
 }
 
 // 3. 显示总结弹窗逻辑
@@ -1730,6 +2069,9 @@ function showSummaryModal() {
     // 停止动画帧和轮播
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     if (textInterval) clearInterval(textInterval);
+    clearEndTimer();
+    // 注意：这里不要调用 stopTitleFlash()，否则"到点提醒"的标题闪烁会被立刻关掉，
+    // 它由 stopTimer() 在用户处理完记录后统一收尾。
 
     // 计算最终时长字符串
     const finalMs = elapsedMs; // 此时 elapsedMs 已经是完整的总耗时了
@@ -1771,6 +2113,44 @@ function closeSummary(isSave) {
             }
         });
 
+        // 【桌面端新增】常用快捷键：
+        //   空格 = 暂停 / 继续，Esc = 关闭最上层弹窗（总结弹窗按 Esc 等同"不保存"）
+        document.addEventListener('keydown', (e) => {
+            const tag = ((e.target && e.target.tagName) || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea') return; // 正在打字时不拦截
+
+            if (e.code === 'Space') {
+                const summaryOpen = document.getElementById('summary-modal').classList.contains('active');
+                if (timerScreen.classList.contains('active') && !summaryOpen) {
+                    e.preventDefault();
+                    togglePause();
+                }
+                return;
+            }
+
+            if (e.key === 'Escape') {
+                if (document.getElementById('summary-modal').classList.contains('active')) {
+                    closeSummary(false);
+                } else if (document.getElementById('history-modal').classList.contains('active')) {
+                    closeHistoryModal();
+                } else if (document.getElementById('settings-modal').classList.contains('active')) {
+                    closeSettingsModal();
+                } else if (pickerModal.classList.contains('open')) {
+                    closePicker();
+                }
+            }
+        });
+
+        // 【桌面端新增】计时进行中（或有还没保存的记录）时，刷新/关闭页面前先提示，
+        // 避免误按 F5 丢掉整段专注时间。
+        window.addEventListener('beforeunload', (e) => {
+            const summaryOpen = document.getElementById('summary-modal').classList.contains('active');
+            if (isRunning || summaryOpen) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
         function enterFullScreen() {
             // 获取文档根元素 (<html>)
             const elem = document.documentElement;
@@ -1793,15 +2173,6 @@ function closeSummary(isSave) {
             }
         }
         
-        // 监听全屏变化事件（可选：用于调试或后续扩展 UI 变化）
-        document.addEventListener('fullscreenchange', () => {
-            if (document.fullscreenElement) {
-                console.log("已进入全屏沉浸模式");
-            } else {
-                console.log("已退出全屏");
-            }
-        });
-
         // ================= 开发者模式逻辑 =================
 
 const devContainer = document.getElementById('dev-timeline-container');
@@ -1873,6 +2244,7 @@ devSlider.addEventListener('input', (e) => {
     const correctCycleIndex = Math.floor(sliderSeconds / 1200);
     if (correctCycleIndex !== currentResIndex) {
         currentResIndex = correctCycleIndex;
+        lastCycleIndex = correctCycleIndex;   // 和自动切图保持同一套索引基准
         updateResource(currentResIndex, true); 
         
         // 强制刷新文字内容
@@ -2017,6 +2389,11 @@ async function fetchCloudData() {
         }
         
         const data = await response.json();
+        // 文件超过 1MB 时 GitHub 不再返回 base64 内容，这里做个保护
+        if (!data || data.encoding !== 'base64' || typeof data.content !== 'string') {
+            console.warn('云端记录格式异常（可能超过 1MB），已跳过云端合并');
+            return null;
+        }
         // 返回的是 base64 编码的内容
         const content = atob(data.content.replace(/\n/g, ''));
         return JSON.parse(content);
@@ -2158,10 +2535,8 @@ function saveAndExit() {
     historyList.unshift(record);
     localStorage.setItem('immersiveHistory', JSON.stringify(historyList));
 
-    // 6. 更新简易下拉历史 (taskHistory)
-    if (typeof saveTaskToHistory === 'function') {
-        saveTaskToHistory(taskName);
-    }
+    // 6. 下拉建议的计数在 startFocus 时已经记过一次，这里不再重复计数
+    //    （原来两处都记，导致同一个任务被算两次）
 
     // 7. 同步到 GitHub 云端（异步，不影响主流程）
     if (isGitHubConfigured()) {
@@ -2201,37 +2576,245 @@ async function openHistoryModal() {
     const localList = JSON.parse(localStorage.getItem('immersiveHistory')) || [];
     
     // 合并云端和本地数据
-    let mergedList;
     if (cloudList !== null) {
-        mergedList = mergeCloudAndLocal(cloudList, localList);
+        const mergedList = mergeCloudAndLocal(cloudList, localList);
         // 将合并后的数据写回本地，保持同步
         localStorage.setItem('immersiveHistory', JSON.stringify(mergedList));
+        renderHistoryList(mergedList);
     } else {
-        mergedList = localList;
+        renderHistoryList(localList);
     }
-    
-    // 渲染
-    if (mergedList.length === 0) {
-        container.innerHTML = '<div class="empty-tip">暂无学习记录</div>';
-    } else {
-        let html = '';
-        mergedList.forEach((item, index) => {
-            html += `
-                <div class="history-row">
-                    <div class="btn-delete-record" onclick="deleteHistoryItem(${index})" title="删除此条">×</div>
-                    
-                    <div class="history-row-top">
-                        <span>${escapeHtml(item.task)}</span>
-                        <span>${escapeHtml(item.duration)}</span>
-                    </div>
-                    <div class="history-row-mid">
-                        <span>${escapeHtml(item.startTime)}</span>
-                    </div>
-                    ${item.note ? `<div class="history-note">📝 ${escapeHtml(item.note)}</div>` : ''}
+}
+
+// ================= 统计：今日 / 本周 / 累计 =================
+// 记录里的 duration 是 "H小时M分S秒" 这种字符串，这里解析回秒数
+function parseDurationSeconds(text) {
+    const m = /(?:(\d+)\s*小时)?\s*(?:(\d+)\s*分)?\s*(?:(\d+)\s*秒)?/.exec(String(text || ''));
+    if (!m) return 0;
+    return (parseInt(m[1] || '0', 10) * 3600)
+        + (parseInt(m[2] || '0', 10) * 60)
+        + parseInt(m[3] || '0', 10);
+}
+
+function formatDurationCn(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    if (h > 0) return `${h} 小时 ${m} 分`;
+    if (m > 0) return `${m} 分`;
+    return `${Math.max(0, seconds)} 秒`;
+}
+
+function renderHistorySummary(list) {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const mondayOffset = (now.getDay() + 6) % 7;            // 以周一作为一周的开始
+    const weekStart = todayStart - mondayOffset * 86400000;
+
+    let todaySec = 0;
+    let weekSec = 0;
+    let totalSec = 0;
+
+    list.forEach((item) => {
+        const sec = parseDurationSeconds(item.duration);
+        const savedAt = Number(item.id) || 0;               // id 就是保存时的 Date.now()
+        totalSec += sec;
+        if (savedAt >= todayStart) todaySec += sec;
+        if (savedAt >= weekStart) weekSec += sec;
+    });
+
+    return `
+        <div class="history-summary">
+            <div>共 ${list.length} 条 · 今日 ${formatDurationCn(todaySec)} · 本周 ${formatDurationCn(weekSec)}</div>
+            <div class="history-summary-sub">累计 ${formatDurationCn(totalSec)}</div>
+        </div>
+    `;
+}
+
+// ================= 使用热力图（类似 GitHub 贡献图） =================
+// 灰 = 当天没用过；蓝 = 用过；紫 = 当天累计超过 4 小时；红 = 超过 8 小时
+const HEATMAP_WEEKS = 18;   // 展示最近 18 周（约 4 个月），列 = 周（周一为一周开始），行 = 星期
+
+function formatDayKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+// 把记录按"自然日"聚合成 { 'YYYY-MM-DD': { seconds, count } }
+function buildDailyStats(list) {
+    const daily = {};
+    (list || []).forEach((item) => {
+        const savedAt = Number(item.id) || 0;         // id 就是保存时的 Date.now()
+        if (!savedAt) return;
+        const key = formatDayKey(new Date(savedAt));
+        if (!daily[key]) daily[key] = { seconds: 0, count: 0 };
+        daily[key].seconds += parseDurationSeconds(item.duration);
+        daily[key].count += 1;
+    });
+    return daily;
+}
+
+function heatLevel(stats) {
+    if (!stats || stats.count === 0) return 0;        // 没用过
+    if (stats.seconds > 8 * 3600) return 3;           // 超过 8 小时
+    if (stats.seconds > 4 * 3600) return 2;           // 超过 4 小时
+    return 1;                                         // 用过（哪怕只有几秒）
+}
+
+// 连续使用天数（对应右上角的 ×N 倍数徽章）。
+// 今天还没开始不算断，会从昨天继续往前数。
+function computeStreak(daily) {
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    if (!daily[formatDayKey(cursor)]) cursor.setDate(cursor.getDate() - 1);
+
+    let streak = 0;
+    while (daily[formatDayKey(cursor)]) {
+        streak += 1;
+        cursor.setDate(cursor.getDate() - 1);   // 按日历减一天，跨月/跨年都没问题
+    }
+    return streak;
+}
+
+function formatHeatmapDetail(key, seconds, count) {
+    const parts = String(key).split('-').map(Number);
+    const weekday = ['日', '一', '二', '三', '四', '五', '六'][new Date(parts[0], parts[1] - 1, parts[2]).getDay()];
+    const head = `${parts[0]}年${parts[1]}月${parts[2]}日（周${weekday}）`;
+    return count > 0
+        ? `${head} · ${count} 条记录 · 共 ${formatDurationCn(seconds)}`
+        : `${head} · 没有使用记录`;
+}
+
+function renderHeatmap(list) {
+    const daily = buildDailyStats(list);
+
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const mondayOffset = (todayStart.getDay() + 6) % 7;                                  // 周一 = 0
+    const lastMonday = new Date(todayStart.getTime() - mondayOffset * 86400000);         // 本周一
+    const firstDay = new Date(lastMonday.getTime() - (HEATMAP_WEEKS - 1) * 7 * 86400000); // 第一列的周一
+
+    let cells = '';
+    const weekMonths = [];
+    for (let w = 0; w < HEATMAP_WEEKS; w++) {
+        const weekStart = new Date(firstDay.getTime() + w * 7 * 86400000);
+        weekMonths.push(weekStart.getMonth());
+        for (let d = 0; d < 7; d++) {
+            const day = new Date(weekStart.getTime() + d * 86400000);
+            if (day.getTime() > todayStart.getTime()) {
+                cells += '<div class="hm-cell hm-empty"></div>';    // 未来的日期留空
+                continue;
+            }
+            const key = formatDayKey(day);
+            const stats = daily[key];
+            const level = heatLevel(stats);
+            const seconds = stats ? stats.seconds : 0;
+            const count = stats ? stats.count : 0;
+            const tip = formatHeatmapDetail(key, seconds, count);
+            cells += `<div class="hm-cell" data-level="${level}" data-date="${key}" data-seconds="${seconds}" data-count="${count}" title="${tip}"></div>`;
+        }
+    }
+
+    // 月份标签：月份变化处起一个新标签；只有 1 列宽时留空占位，保证和圆点列对齐
+    const labels = [];
+    for (let w = 0; w < HEATMAP_WEEKS; w++) {
+        if (w === 0 || weekMonths[w] !== weekMonths[w - 1]) labels.push({ month: weekMonths[w], span: 1 });
+        else labels[labels.length - 1].span += 1;
+    }
+    const monthsHtml = labels.map((l) => {
+        const text = l.span >= 2 ? `${l.month + 1}月` : '';
+        return `<span style="grid-column: span ${l.span}">${text}</span>`;
+    }).join('');
+
+    // 连续使用天数：≥2 天显示 ×N 徽章，第 1 天用浅色文案提示，避免用户不知道这个机制
+    const streak = computeStreak(daily);
+    const streakHtml = streak >= 2
+        ? `<span class="hm-streak" title="已连续使用 ${streak} 天">×${streak}</span>`
+        : (streak === 1 ? '<span class="hm-streak hm-streak-mild" title="已连续使用 1 天">连续 1 天</span>' : '');
+
+    return `
+        <div class="heatmap">
+            <div class="heatmap-head">
+                <span class="heatmap-title">专注热力图</span>
+                <span class="heatmap-head-right">
+                    ${streakHtml}
+                    <span class="heatmap-help" title="灰 = 当天没用过；蓝 = 用过；紫 = 当天超过 4 小时；红 = 超过 8 小时。点圆点看当天明细。">?</span>
+                </span>
+            </div>
+            <div class="heatmap-body">
+                <div class="hm-days">
+                    <span style="grid-row: 1">一</span>
+                    <span style="grid-row: 3">三</span>
+                    <span style="grid-row: 5">五</span>
+                    <span style="grid-row: 7">日</span>
                 </div>
-            `;
-        });
+                <div class="hm-main">
+                    <div class="hm-months">${monthsHtml}</div>
+                    <div class="hm-grid">${cells}</div>
+                </div>
+            </div>
+            <div class="hm-legend">
+                <span><i data-level="0"></i>未使用</span>
+                <span><i data-level="1"></i>已使用</span>
+                <span><i data-level="2"></i>超 4 小时</span>
+                <span><i data-level="3"></i>超 8 小时</span>
+            </div>
+            <div class="hm-detail" id="hm-detail">点一个圆点查看当天明细</div>
+        </div>
+    `;
+}
+
+// 点击某个圆点：高亮它并在下面显示当天明细
+function showHeatmapDetail(cell) {
+    const container = document.getElementById('history-list-content');
+    if (container) {
+        container.querySelectorAll('.hm-selected').forEach((c) => c.classList.remove('hm-selected'));
+    }
+    cell.classList.add('hm-selected');
+
+    const detail = document.getElementById('hm-detail');
+    if (!detail) return;
+    const key = cell.getAttribute('data-date') || '';
+    const seconds = parseInt(cell.getAttribute('data-seconds') || '0', 10) || 0;
+    const count = parseInt(cell.getAttribute('data-count') || '0', 10) || 0;
+    detail.innerText = formatHeatmapDetail(key, seconds, count);
+}
+
+// 单纯负责渲染（渲染顺序必须和 localStorage 里的一致，删除按钮靠下标定位）
+function renderHistoryList(list) {
+    const container = document.getElementById('history-list-content');
+
+    let html = renderHistorySummary(list) + renderHeatmap(list);
+
+    if (!list || list.length === 0) {
+        html += '<div class="empty-tip">暂无学习记录</div>';
         container.innerHTML = html;
+        return;
+    }
+    list.forEach((item, index) => {
+        html += `
+            <div class="history-row">
+                <div class="btn-delete-record" onclick="deleteHistoryItem(${index})" title="删除此条">×</div>
+                
+                <div class="history-row-top">
+                    <span>${escapeHtml(item.task)}</span>
+                    <span>${escapeHtml(item.duration)}</span>
+                </div>
+                <div class="history-row-mid">
+                    <span>${escapeHtml(item.startTime)}</span>
+                </div>
+                ${item.note ? `<div class="history-note">📝 ${escapeHtml(item.note)}</div>` : ''}
+            </div>
+        `;
+    });
+    container.innerHTML = html;
+
+    // 热力图：点圆点看当天明细（事件委托，避免给每个格子挂监听）
+    const grid = container.querySelector('.hm-grid');
+    if (grid && grid.addEventListener) {
+        grid.addEventListener('click', (ev) => {
+            const target = ev.target;
+            const cell = (target && target.closest) ? target.closest('.hm-cell') : null;
+            if (cell && !cell.classList.contains('hm-empty')) showHeatmapDetail(cell);
+        });
     }
 }
 
@@ -2255,15 +2838,13 @@ function deleteHistoryItem(index) {
     
     // 同步到 GitHub 云端
     if (isGitHubConfigured()) {
-        pushToCloud(list).then(success => {
-            if (success) {
-                console.log('☁️ 删除已同步到云端');
-            }
-        });
+        pushToCloud(list);
     }
     
-    // 立即重新渲染列表
-    openHistoryModal();
+    // 【修复】这里只重渲染本地列表。
+    // 原来调的是 openHistoryModal()，它会立刻重新拉云端，而此时云端还是删除前的数据，
+    // 一合并就把刚删掉的记录"复活"了。
+    renderHistoryList(list);
 }
 
 function closeHistoryModal() {
@@ -2272,18 +2853,22 @@ function closeHistoryModal() {
 }
 
 // 3. 导出为 Excel (CSV 格式)
+// 【修复】改成标准 CSV 转义：每个字段都用双引号包住、内部双引号翻倍，
+// 这样任务名里出现逗号/引号/换行都不会串列（原来只处理了备注里的逗号）。
+function csvCell(value) {
+    const text = (value === null || value === undefined) ? '' : String(value);
+    return `"${text.replace(/"/g, '""')}"`;
+}
+
 function exportToExcel() {
     const list = JSON.parse(localStorage.getItem('immersiveHistory')) || [];
     if (list.length === 0) return alert('暂无数据可导出');
 
-    // CSV 表头
-    let csvContent = "任务名称,开始时间,专注时长,心得备注\n";
-
+    const rows = [['任务名称', '开始时间', '专注时长', '心得备注']];
     list.forEach(item => {
-        // 处理备注中的换行符和逗号，防止 CSV 格式错乱
-        let safeNote = item.note ? item.note.replace(/,/g, '，').replace(/\n/g, ' ') : '';
-        csvContent += `${item.task},${item.startTime},${item.duration},"${safeNote}"\n`;
+        rows.push([item.task, item.startTime, item.duration, item.note || '']);
     });
+    const csvContent = rows.map(row => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
 
     // 创建 Blob 对象 (加上 \uFEFF 是为了让 Excel 正确识别中文 UTF-8)
     const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -2302,6 +2887,7 @@ function exportToExcel() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url); // 释放 Blob，避免反复导出占内存
 }
 
 // A. 强力清除所有文字动画 (让文字保持静止可见)
@@ -2441,9 +3027,9 @@ function importBackup(inputElement) {
         try {
             const data = JSON.parse(e.target.result);
             
-            // 简单的格式校验
-            if (!data.history || !data.stats) {
-                alert("文件格式错误：这不是 Timing 的备份文件。");
+            // 格式校验：字段缺失或类型不对都拦下来，避免把本地数据写坏
+            if (!data || !Array.isArray(data.history) || typeof data.stats !== 'object' || data.stats === null) {
+                alert("文件格式错误：这不是 Timing 的备份文件（或文件已损坏）。");
                 return;
             }
 
@@ -2471,46 +3057,21 @@ function importBackup(inputElement) {
     inputElement.value = ''; 
 }
 
-// ================= 性能优化：图片预加载 =================
+        // ================= 性能优化：按需预热 =================
+        // 说明：原来的 preloadAllImages() 会在页面加载时把 24 张原图全部 fetch 成
+        // Blob 常驻内存（原图合计约 141MB），桌面端也会明显卡顿；现已改为
+        // 只预热当前邻近的图片（见 preloadAround），首屏几乎瞬时可用。
+        window.addEventListener('load', () => {
+            ensureImage(0);
+            ensureImage(1);
+        });
 
-// ================= 强力预加载：转为 Blob 内存数据 =================
+        // 打开页面时回填上次的任务名和时长
+        restoreLastSetup();
 
-// 用于存储转换后的本地图片地址
-const loadedImages = {}; 
-
-async function preloadAllImages() {
-    console.log("正在强力下载所有图片到内存...");
-    
-    // 我们使用 Promise.all 并发下载所有图片
-    const promises = resources.map(async (item, index) => {
-        try {
-            // 1. 发起请求获取图片文件
-            const response = await fetch(item.img);
-            // 2. 转为 Blob (二进制大对象)
-            const blob = await response.blob();
-            // 3. 生成一个本地内存链接 (例如: blob:http://localhost/...)
-            const objectURL = URL.createObjectURL(blob);
-            
-            // 4. 存入字典，key 是索引，value 是内存地址
-            loadedImages[index] = objectURL;
-            
-            // (可选) 可以在这里更新进度条，比如 "已加载 1/24"
-            // console.log(`图片 ${index} 已锁定在内存`);
-            
-        } catch (err) {
-            console.error(`图片 ${item.title} 加载失败`, err);
-            // 失败保底：如果有网络问题，还是用原链接
-            loadedImages[index] = item.img;
-        }
-    });
-
-    // 等待所有图片都处理完
-    await Promise.all(promises);
-    console.log("所有图片已驻留内存，后台切换无压力！");
-}
-
-// 页面加载时立即执行
-preloadAllImages();
+        // 设置弹窗底部显示版本号（单一来源：APP_VERSION）
+        const versionEl = document.getElementById('app-version-text');
+        if (versionEl) versionEl.textContent = 'v' + APP_VERSION;
     </script>
 </body>
 </html>
