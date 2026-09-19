@@ -1297,7 +1297,7 @@
         <button class="btn-confirm-flat" onclick="saveGitHubSettings()">保存设置</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.5</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.2.6</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1339,7 +1339,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.2.5';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.2.6';   // 版本号（改动记录见 README.md）
         let endTimerHandle = null;     // 到点提醒的兜底 setTimeout
         let titleFlashTimer = null;    // 标签页标题闪烁定时器
         const BASE_TITLE = document.title;
@@ -1604,6 +1604,9 @@ function startFocus() {
     // 3. 记住这次的任务名和时长，下次打开自动回填
     persistLastSetup();
 
+    // 3b. 会话要开始了：把后台预加载让出来（空闲时还会在回主页后接着跑）
+    stopAllPreload();
+
     // 4. 记录本次真实开始时间
     //    【修复】原来这行写在函数外面，导致历史记录里的开始时间 = 打开页面的时间
     sessionStartTimeObj = new Date();
@@ -1652,6 +1655,7 @@ function startFocus() {
         function showImageAt(cycleIndex) {
             currentResIndex = cycleIndex + imageOffset;
             updateResource(currentResIndex);
+            schedulePrefetchAhead();   // 换完图，重新按新位置安排下一次预取
         }
 
         function syncResourceToCycle(cycleIndex) {
@@ -1698,6 +1702,43 @@ function startFocus() {
             }
         }
 
+        // ================= A. 提前量预取：节点前 90 秒把"下一张"拉下来 =================
+        // 不再开场就下 7.4MB，而是在下一个 20 分钟节点到来前 90 秒预取那一张：
+        // 到点切图零等待，开场也没有带宽风暴。
+        // 开发者模式完全不预取（带宽全给当前要显示的那张）。
+        const PREFETCH_LEAD_MS = 90000;
+        let prefetchTimer = null;
+
+        function msUntilPrefetch(elapsedNow) {
+            const nextNodeMs = (Math.floor(elapsedNow / CYCLE_MS) + 1) * CYCLE_MS;
+            return Math.max(0, nextNodeMs - elapsedNow - PREFETCH_LEAD_MS);
+        }
+
+        function schedulePrefetchAhead() {
+            clearPrefetchTimer();
+            if (!isRunning || isDevMode) return;      // 暂停中 / 开发者模式不预取
+            const elapsedNow = elapsedMs + (performance.now() - startTime);
+            prefetchTimer = setTimeout(() => {
+                prefetchTimer = null;
+                prefetchNextImage();
+            }, msUntilPrefetch(elapsedNow));
+        }
+
+        function prefetchNextImage() {
+            if (!isRunning || isDevMode) return;
+            const elapsedNow = elapsedMs + (performance.now() - startTime);
+            const nextCycle = Math.floor(elapsedNow / CYCLE_MS) + 1;
+            const nextIndex = nextCycle + imageOffset;
+            ensureImage(((nextIndex % resources.length) + resources.length) % resources.length);
+        }
+
+        function clearPrefetchTimer() {
+            if (prefetchTimer) {
+                clearTimeout(prefetchTimer);
+                prefetchTimer = null;
+            }
+        }
+
         // 2. 核心计时逻辑 (改为 requestAnimationFrame)
         //    isResume = true 表示从暂停中恢复：不重播开场翻转动画
 function startTimerLogic(isResume) {
@@ -1711,6 +1752,7 @@ function startTimerLogic(isResume) {
     startTime = performance.now();
     scheduleEndTimer();   // 兜底提醒：不依赖 requestAnimationFrame
     scheduleCycleTimer(); // 兜底切图：不依赖 requestAnimationFrame
+    schedulePrefetchAhead(); // A：节点前 90 秒预取下一张
     startSessionSnapshot(); // 每 5 秒把进度写进 localStorage，刷新/崩溃后能续上
 
     const loop = () => {
@@ -1819,6 +1861,7 @@ function startTimerLogic(isResume) {
                 cancelAnimationFrame(animationFrameId);
                 clearEndTimer();
                 clearCycleTimer();
+                clearPrefetchTimer();
 
                 // 【修复】暂停时把 CSS 动画也冻住（背景平移 + 三圈波纹），
                 // 否则暂停画面上背景还在慢慢移动、波纹还在扩散。
@@ -1845,9 +1888,13 @@ function stopTimer() {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     clearEndTimer();
     clearCycleTimer();
+    clearPrefetchTimer();
     stopSessionSnapshot();
     stopTitleFlash();
     timerScreen.classList.remove('paused');
+    
+    // 回到主页=空闲：这时候才去把 24 张图慢慢预热（不打扰任何计时）
+    preloadAllImagesInBackground();
     
     // --- 【新增：必须手动杀死所有文字动画定时器】 ---
     resetAllTextAnims(); 
@@ -2361,6 +2408,7 @@ function showSummaryModal() {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     clearEndTimer();
     clearCycleTimer();
+    clearPrefetchTimer();
     // 记一次最终快照：万一把总结弹窗晾着就关了浏览器，下次还能接着保存
     snapshotRunningSession();
     // 注意：这里不要调用 stopTitleFlash()，否则"到点提醒"的标题闪烁会被立刻关掉，
@@ -2727,6 +2775,7 @@ function activateDevMode() {
     // 【关键】开发者模式要来回跳时间轴：先让预加载让路。
     // 否则二十多个后台请求会把"当前这张图"挤到队尾，表现就是加载不出来、文字和图片对不上。
     stopAllPreload();
+    schedulePrefetchAhead();   // isDevMode=true 时会顺手把已排好的预取定时器清掉
 
     totalDurationMinutes = 480; 
     devContainer.style.display = 'block';
@@ -3701,7 +3750,11 @@ function importBackup(inputElement) {
         window.addEventListener('load', () => {
             ensureImage(0);
             ensureImage(1);
-            preloadAllImagesInBackground();   // 24 张图一次性拉进浏览器缓存
+            // 打开页面先什么都不抢：等回到主页空闲时再全量预热（见 stopTimer）
+            // 首次进入首页也预热一遍，让"看一眼就准备开始"的场景也够快
+            if (document.getElementById('setup-screen').classList.contains('active')) {
+                preloadAllImagesInBackground();
+            }
         });
 
         // 打开页面时回填上次的任务名和时长
@@ -3709,6 +3762,23 @@ function importBackup(inputElement) {
 
         // 主页显示"续上一次的进度"提示条（如果有暂存）
         renderResumeBar();
+
+        // ================= B. Service Worker：把背景图永久缓存在本地 =================
+        // 线上静态资源只有 max-age=600（10 分钟），而我们 20 分钟才切一次图，
+        // 所以每次切图那张图都已经过期、要重新走网络。用 Cache Storage（不受 max-age 限制）
+        // 存下来之后：线上体验≈本地，开发者模式随便跳，断网也能切图。
+        // 只在 https / localhost 注册；file:// 直接跳过，不影响双击打开测试。
+        (function registerServiceWorker() {
+            if (!('serviceWorker' in navigator)) return;
+            const okProto = location.protocol === 'https:'
+                || location.hostname === 'localhost'
+                || location.hostname === '127.0.0.1';
+            if (!okProto) return;
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .catch((err) => console.warn('Service Worker 注册失败（不影响使用）:', err));
+            });
+        })();
 
         // 设置弹窗底部显示版本号（单一来源：APP_VERSION）
         const versionEl = document.getElementById('app-version-text');
