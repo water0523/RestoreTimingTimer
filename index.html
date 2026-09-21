@@ -922,6 +922,24 @@
     cursor: default;
     opacity: 0.55;
 }
+/* 备份文件那一排小按钮 */
+.settings-backup-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.btn-mini {
+    font-size: 13px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #d5d9e0;
+    background: #f7f8fa;
+    color: #333;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.btn-mini:hover { background: #eef1f5; border-color: #c3c9d2; }
+.btn-mini:active { transform: scale(0.98); }
 
 /* 历史列表 */
 .history-list-container {
@@ -1453,11 +1471,36 @@
         <div class="help-text">停在主页没事做的时候，把 24 张背景图（约 7.4MB）慢慢缓存到本地。关掉可以省流量。</div>
     </div>
 
+    <div class="settings-section-title" style="margin-top: 18px;">数据备份</div>
+
+    <div class="settings-field">
+        <label class="settings-toggle-row" for="pref-autoBackup">
+            <input type="checkbox" id="pref-autoBackup" onchange="onPrefToggle('autoBackup', this.checked)" />
+            <span class="settings-toggle-text">每次保存记录时写入备份文件</span>
+        </label>
+        <div class="help-text">
+            先在下面选一次备份文件（比如放到网盘的同步文件夹里），之后每次保存都会把新记录
+            <strong>合并</strong>写进这同一个文件：同一个 id 只保留一条，不会重复也不会生成一堆副本，
+            换电脑时直接把这个文件拷过去用「导入备份」即可。<br />
+            网页没有权限直接往某个磁盘路径写文件，所以需要你选一次、浏览器记住这个文件；想换位置点「更改文件」。
+            手动「暂存 / 不保存」不会写备份文件，只有真正保存成记录才会。
+        </div>
+    </div>
+
+    <div class="settings-field">
+        <div class="settings-backup-row">
+            <button class="btn-mini" onclick="pickBackupFile()">选择 / 更改备份文件</button>
+            <button class="btn-mini" onclick="writeBackupFile({ requestPermission: true })">立即写入一次</button>
+            <button class="btn-mini" onclick="disconnectBackupFile()">断开</button>
+        </div>
+        <div class="help-text" id="backup-status">尚未选择备份文件</div>
+    </div>
+
     <div class="modal-btns" style="margin-top: 20px;">
         <button class="btn-confirm-flat" style="flex: 1;" onclick="closeSettingsModal()">完成</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.3.0</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.4.0</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1499,7 +1542,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.3.0';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.4.0';   // 版本号（改动记录见 README.md）
 
         // ================= 偏好设置（设置弹窗里的开关） =================
         // 所有"可以自己选"的功能都收敛到这里，**默认全部打开**。
@@ -1517,7 +1560,8 @@ const resources = [
             heatmap:        true,   // 专注热力图 + 连续天数徽章
             suggestions:    true,   // 任务名建议（下拉模糊筛选）
             prefetch:       true,   // 计时中提前预取下一张背景图
-            preloadAll:     true    // 回到主页空闲时预加载全部背景图
+            preloadAll:     true,   // 回到主页空闲时预加载全部背景图
+            autoBackup:     true    // 每次保存记录时写入固定位置的备份文件
         };
         let prefs = readPrefs();
 
@@ -1603,6 +1647,9 @@ const resources = [
                     break;
                 case 'preloadAll':
                     if (prefs.preloadAll) preloadAllImagesInBackground(); else stopAllPreload();
+                    break;
+                case 'autoBackup':
+                    refreshBackupStatus();
                     break;
             }
         }
@@ -3272,7 +3319,10 @@ function saveAndExit() {
     // 6. 下拉建议的计数在 startFocus 时已经记过一次，这里不再重复计数
     //    （原来两处都记，导致同一个任务被算两次）
 
-    // 7. 关闭弹窗
+    // 7. 有固定的备份文件时，把这次记录"覆盖合并"写进去（异步，不挡主流程）
+    autoWriteBackup();
+
+    // 8. 关闭弹窗
     closeSummary(true);
 
     // 9. 记录已落库，清掉自动快照
@@ -3572,6 +3622,7 @@ function updateHistoryTask(index, newTitle) {
     }
     item.task = title;
     localStorage.setItem('immersiveHistory', JSON.stringify(list));
+    autoWriteBackup();          // 备份文件里也跟着改名（合并时本地优先）
     renderHistoryList(list);
     return true;
 }
@@ -3617,11 +3668,14 @@ function escapeHtml(text) {
 function deleteHistoryItem(index) {
     let list = readHistory();
     
-    // 删除对应索引的元素
+    // 删除对应索引的元素（先记下 id：备份文件里也要同步删掉，否则下次合并又会被加回来）
+    const removed = list[index];
     list.splice(index, 1);
     
     // 保存回本地
     localStorage.setItem('immersiveHistory', JSON.stringify(list));
+    
+    autoWriteBackup(removed && removed.id !== undefined ? [removed.id] : []);
     
     // 【修复】这里只重渲染本地列表（云同步已在 v1.3.0 移除）
     renderHistoryList(list);
@@ -3765,27 +3819,31 @@ function exportBackup() {
     const taskStats = getHistory();
 
     // 把两份数据打包在一起
-    const backupData = {
-        version: "1.0",
-        date: new Date().toLocaleString(),
-        history: history,
-        stats: taskStats
-    };
+    const backupData = buildBackupPayload(history, taskStats);
 
     const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     
     const link = document.createElement("a");
     link.href = url;
-    // 文件名带上时间，方便区分
-    const dateStr = new Date().toISOString().slice(0,10).replace(/-/g, "");
-    link.download = `Timing_备份_${dateStr}.json`;
+    // 固定文件名：真正"固定位置 + 覆盖合并"请用设置里的备份文件（见下方）
+    link.download = BACKUP_FILE_NAME;
     
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
-    alert("备份文件已下载！\n请把这个 .json 文件发到另一台设备上进行导入。");
+    alert("备份文件已下载！\n请把这个 .json 文件发到另一台设备上进行导入。\n\n（想让它每次自动写进同一个文件，去设置里选一次「备份文件」。）");
+}
+
+// 导出/备份共用的数据格式（导入备份也认这个格式）
+function buildBackupPayload(history, stats) {
+    return {
+        version: APP_VERSION,
+        date: new Date().toLocaleString(),
+        history: Array.isArray(history) ? history : [],
+        stats: (stats && typeof stats === 'object' && !Array.isArray(stats)) ? stats : {}
+    };
 }
 
 // 2. 触发导入 (点击按钮模拟点击文件框)
@@ -3831,6 +3889,210 @@ function importBackup(inputElement) {
     
     // 清空 input，防止同名文件无法再次触发
     inputElement.value = ''; 
+}
+
+// ================= 固定位置的备份文件（File System Access API） =================
+// 目标：备份固定写进"同一个文件"，位置可以在设置里改，每次保存都"覆盖合并"进去。
+//
+// 为什么必须让用户选一次：
+//   网页没有权限往任意磁盘路径写文件（`D:\备份\timing.json` 这种是做不到的）。
+//   唯一正规做法是 File System Access：用户选一次文件 → 浏览器交出这个文件的句柄 →
+//   之后每次都写进同一个文件。句柄存在 IndexedDB 里（FileSystemFileHandle 没法存 localStorage）。
+//   Chrome / Edge 支持；本地双击打开（file://）同样可用；不支持的浏览器会提示改用「导出备份」。
+const BACKUP_DB = 'timing_backup';
+const BACKUP_STORE = 'handles';
+const BACKUP_HANDLE_KEY = 'backupFile';
+const BACKUP_FILE_NAME = 'timing-backup.json';
+let backupFileHandle = null;
+let backupLastWrite = null;      // { at, count }，只用于状态栏显示
+
+function isBackupFileSupported() {
+    return typeof window.showSaveFilePicker === 'function' && typeof window.indexedDB !== 'undefined';
+}
+
+// --- IndexedDB：只为了把文件句柄留到下次打开 ---
+function withBackupDB(onDone) {
+    if (!window.indexedDB) { onDone(null); return; }
+    let req;
+    try { req = window.indexedDB.open(BACKUP_DB, 1); } catch (err) { onDone(null); return; }
+    req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(BACKUP_STORE)) db.createObjectStore(BACKUP_STORE);
+    };
+    req.onsuccess = () => onDone(req.result);
+    req.onerror = () => onDone(null);
+}
+
+function saveBackupHandle(handle) {
+    withBackupDB((db) => {
+        if (!db) return;
+        try {
+            const tx = db.transaction(BACKUP_STORE, 'readwrite');
+            const store = tx.objectStore(BACKUP_STORE);
+            if (handle) store.put(handle, BACKUP_HANDLE_KEY);
+            else store.delete(BACKUP_HANDLE_KEY);
+        } catch (err) { /* 存不下就算了，最多下次再选一次 */ }
+    });
+}
+
+function loadBackupHandle() {
+    withBackupDB((db) => {
+        if (!db) { refreshBackupStatus(); return; }
+        try {
+            const req = db.transaction(BACKUP_STORE, 'readonly')
+                .objectStore(BACKUP_STORE).get(BACKUP_HANDLE_KEY);
+            req.onsuccess = () => {
+                backupFileHandle = req.result || null;
+                refreshBackupStatus();
+            };
+            req.onerror = () => refreshBackupStatus();
+        } catch (err) { refreshBackupStatus(); }
+    });
+}
+
+// --- 合并规则 ---
+// 本地记录优先（本地改过任务名就以本地为准），文件里本地没有的补进来；同一个 id 只留一条。
+function mergeRecordLists(localList, fileList) {
+    const seen = new Set();
+    const out = [];
+    const push = (item) => {
+        if (!item || item.id === undefined || item.id === null) return;
+        const key = String(item.id);
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(item);
+    };
+    (Array.isArray(localList) ? localList : []).forEach(push);
+    (Array.isArray(fileList) ? fileList : []).forEach(push);
+    out.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));   // 新的在前
+    return out;
+}
+
+// 任务建议的计数取两边较大的那个（同一个任务在两台设备上各用过几次）
+function mergeTaskStats(localStats, fileStats) {
+    const out = {};
+    [localStats, fileStats].forEach((src) => {
+        if (!src || typeof src !== 'object' || Array.isArray(src)) return;
+        Object.keys(src).forEach((key) => {
+            const n = Number(src[key]) || 0;
+            out[key] = Math.max(out[key] || 0, n);
+        });
+    });
+    return out;
+}
+
+// --- 权限：选过之后浏览器可能要求重新授权，必须发生在用户点击里 ---
+async function ensureBackupPermission(request) {
+    if (!backupFileHandle) return false;
+    const opts = { mode: 'readwrite' };
+    try {
+        if (typeof backupFileHandle.queryPermission === 'function') {
+            if (await backupFileHandle.queryPermission(opts) === 'granted') return true;
+        }
+        if (!request || typeof backupFileHandle.requestPermission !== 'function') return false;
+        return (await backupFileHandle.requestPermission(opts)) === 'granted';
+    } catch (err) {
+        return false;
+    }
+}
+
+// 把当前数据"覆盖合并"进备份文件。
+//   options.requestPermission：true 表示这次是用户点击触发的，可以弹授权
+//   options.removedIds：这次被删掉的记录 id，合并时从文件里也去掉（避免下次又被合并回来）
+async function writeBackupFile(options) {
+    const opts = options || {};
+    if (!backupFileHandle) {
+        refreshBackupStatus();
+        return false;
+    }
+    if (!(await ensureBackupPermission(!!opts.requestPermission))) {
+        refreshBackupStatus('需要授权：点一下「立即写入一次」授权');
+        return false;
+    }
+    try {
+        // 先读旧文件（不存在 / 空 / 坏 JSON 都当作"没有"，直接重建）
+        let existing = null;
+        try {
+            const text = await (await backupFileHandle.getFile()).text();
+            if (text && text.trim()) existing = JSON.parse(text);
+        } catch (err) {
+            existing = null;
+        }
+
+        const removed = (opts.removedIds || []).map(String);
+        const merged = mergeRecordLists(readHistory(), existing && existing.history)
+            .filter((item) => removed.indexOf(String(item.id)) < 0);
+        const payload = buildBackupPayload(merged, mergeTaskStats(getHistory(), existing && existing.stats));
+
+        const writable = await backupFileHandle.createWritable();
+        await writable.write(JSON.stringify(payload, null, 2));
+        await writable.close();
+
+        backupLastWrite = { at: Date.now(), count: merged.length };
+        refreshBackupStatus(opts.silent ? null : '已写入 ' + merged.length + ' 条');
+        return true;
+    } catch (err) {
+        console.warn('写入备份文件失败:', err);
+        refreshBackupStatus('写入失败：' + (err && err.message ? err.message : err));
+        return false;
+    }
+}
+
+// 保存记录 / 改名 / 删除之后顺手写一次（不弹授权：这时不一定还在用户手势里）
+function autoWriteBackup(removedIds) {
+    if (!prefs.autoBackup || !backupFileHandle) return;
+    writeBackupFile({ removedIds: removedIds || [], silent: false });
+}
+
+// 让用户选（或换）备份文件；选完立刻写一次，顺便把授权要下来
+async function pickBackupFile() {
+    if (!isBackupFileSupported()) {
+        alert('当前浏览器不支持"固定备份文件"（需要 Chrome / Edge 等）。\n可以改用历史记录里的「导出备份」下载一份 JSON。');
+        return;
+    }
+    try {
+        const handle = await window.showSaveFilePicker({
+            suggestedName: BACKUP_FILE_NAME,
+            types: [{ description: 'JSON 备份', accept: { 'application/json': ['.json'] } }]
+        });
+        backupFileHandle = handle;
+        backupLastWrite = null;
+        saveBackupHandle(handle);
+        refreshBackupStatus('已选定');
+        await writeBackupFile({ requestPermission: true });
+    } catch (err) {
+        if (err && err.name === 'AbortError') return;   // 用户自己取消的，不用报错
+        alert('选择备份文件失败：' + (err && err.message ? err.message : err));
+    }
+}
+
+function disconnectBackupFile() {
+    backupFileHandle = null;
+    backupLastWrite = null;
+    saveBackupHandle(null);
+    refreshBackupStatus('已断开（本机记录不会被删除）');
+}
+
+// 设置弹窗里那一行状态
+function refreshBackupStatus(note) {
+    const el = document.getElementById('backup-status');
+    if (!el) return;
+    if (!isBackupFileSupported()) {
+        el.textContent = '当前浏览器不支持固定备份文件，可用「导出备份」下载一份 JSON。';
+        return;
+    }
+    let text;
+    if (!backupFileHandle) {
+        text = '尚未选择备份文件';
+    } else {
+        const name = backupFileHandle.name || BACKUP_FILE_NAME;
+        text = '备份文件：' + name;
+        text += backupLastWrite
+            ? '（' + new Date(backupLastWrite.at).toLocaleString() + ' 写入 · 共 ' + backupLastWrite.count + ' 条）'
+            : '（已选定）';
+    }
+    if (note) text += ' · ' + note;
+    el.textContent = text;
 }
 
         // ================= 性能优化：按需预热 =================
@@ -4010,7 +4272,7 @@ function importBackup(inputElement) {
         document.addEventListener('pointerdown', applyWakeLock);
         document.addEventListener('keydown', applyWakeLock);
 
-        // ================= E. 设置弹窗：把所有开关同步成当前状态 =================
+        // 设置弹窗：把所有开关同步成当前状态
         function syncSettingsUI() {
             Object.keys(PREF_DEFAULTS).forEach((key) => {
                 const box = document.getElementById('pref-' + key);
@@ -4024,8 +4286,12 @@ function importBackup(inputElement) {
                 const text = document.getElementById('pref-keepAwake-text');
                 if (text) text.textContent = '保持屏幕常亮（当前浏览器不支持）';
             }
+            refreshBackupStatus();   // 备份文件那一行状态
         }
         syncSettingsUI();
+
+        // 打开页面后把上次选好的备份文件句柄取回来（拿不到就等用户重新选）
+        loadBackupHandle();
 
         // 设置弹窗底部显示版本号（单一来源：APP_VERSION）
         const versionEl = document.getElementById('app-version-text');

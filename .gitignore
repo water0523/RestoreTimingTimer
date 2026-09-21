@@ -1,0 +1,8 @@
+# 备份文件：里面是你自己的学习记录，不要提交到公开仓库
+timing-backup.json
+Timing_备份_*.json
+
+# 系统垃圾
+Thumbs.db
+desktop.ini
+.DS_Store
