@@ -326,33 +326,29 @@
             
             /* 关键点1：图片放大到 120%，这样左右才有空间移动 */
             background-size: 120% 120%; 
-            background-position: center;
+            background-position: 50% 50%;   /* 初始值；实际位置由 JS 按"已用时长"每帧算（见 syncBackgroundPan） */
             z-index: 0;
 
             /* 默认透明，只有当前这张（.visible）才是 0.8 不透明度 */
             opacity: 0;
             transition: opacity 0.8s ease-in-out;
-            
-            /* 关键点2：时长设为 20s，配合 alternate (往返) 
-               去程 20s + 回程 20s = 40s 一个循环 */
-            animation: moveBg 20s linear infinite alternate;
+
+            /* 【改】这里原来是一句 CSS 关键帧动画（moveBg，20 秒线性往返）。
+               它从"元素第一次渲染"开始按墙钟跑，和"已用时长"没有任何关系，
+               于是刷新页面 / 切后台再回来 / 暂停恢复之后，
+               文字（按时间轴算）能对上，背景平移却对不上。
+               现在平移完全由 syncBackgroundPan() 按已用时长驱动，
+               和文字呼吸共用同一个相位起点，见下面的说明。 */
         }
 
         .bg-layer.visible {
             opacity: 0.8;
         }
 
-        /* 找到 @keyframes moveBg，替换为以下代码 */
-        @keyframes moveBg {
-            0% { 
-                /* 最左侧：图片的左边缘对齐屏幕左边缘 */
-                background-position: 0% 50%; 
-            }
-            100% { 
-                /* 最右侧：图片的右边缘对齐屏幕右边缘 */
-                background-position: 100% 50%; 
-            }
-        }
+        /* 【删除】原来那个 moveBg 关键帧（20 秒线性往返平移）已经不用了：
+           现在背景位置由 syncBackgroundPan() 按"已用时长"每帧计算，
+           这样它才能和文字呼吸严格对齐（刷新/切后台/暂停恢复后都对得上）。
+           平移的节奏和以前一样：单程 20 秒、一去一回 40 秒。 */
 
         .overlay {
             position: absolute;
@@ -443,6 +439,9 @@
 
         /* 【修复】暂停时冻结背景平移与波纹动画；
            文字呼吸由 JS 相位控制，暂停时 rAF 不跑，本身就是冻结的 */
+        /* 【说明】暂停时背景平移也会停：它不再靠 CSS 动画，而是每帧由
+           syncBackgroundPan() 算出来；暂停时 rAF 不跑，位置自然就冻住了。
+           （下面这条 animation-play-state 现在只对三圈波纹 .ripple 生效） */
         #timer-screen.paused .bg-layer,
         #timer-screen.paused .ripple {
             animation-play-state: paused;
@@ -1513,7 +1512,7 @@
         <button class="btn-confirm-flat" style="flex: 1;" onclick="closeSettingsModal()">完成</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.4.1</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.4.2</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1555,7 +1554,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.4.1';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.4.2';   // 版本号（改动记录见 README.md）
 
         // ================= 偏好设置（设置弹窗里的开关） =================
         // 所有"可以自己选"的功能都收敛到这里，**默认全部打开**。
@@ -2113,6 +2112,7 @@ function startTimerLogic(isResume) {
         updateTimerUI(totalCurrentMs);
         updateTitleTimer(totalCurrentMs);   // 标签页标题同步显示剩余时间
         syncBreathing(totalCurrentMs);      // 文字呼吸：相位跟随时间轴
+        syncBackgroundPan(totalCurrentMs);  // 背景平移：和文字呼吸同一条时间轴
         
         // 【新增】开发者模式：滑块跟随自动更新
         if (isDevMode && devSlider) {
@@ -2148,6 +2148,7 @@ function startTimerLogic(isResume) {
     if (isResume) {
         // 【修复】从暂停恢复时不再重播开场动画，直接把文字相位对齐到时间轴
         syncBreathing(elapsedMs);
+        syncBackgroundPan(elapsedMs);   // 背景平移也一起对齐
     } else if (typeof startTextAnim === 'function') {
         startTextAnim();
     }
@@ -3832,6 +3833,44 @@ function syncBreathing(totalMs) {
     } else {
         timerTaskName.classList.remove('hidden');
         alternatingText.classList.remove('hidden');
+    }
+}
+
+// C. 背景左右平移：和文字呼吸一样，完全按"已用时长"算。
+// 【修复】以前平移是 CSS 关键帧动画自己在跑（按墙钟计时），和"已用时长"无关，
+//   所以刷新页面、切到后台再回来、暂停恢复之后，文字（按时间轴算）总能对上，
+//   背景平移却对不上，两者各走各的。
+// 节奏：单程 20 秒、一去一回 40 秒，**起点（已用 0 秒）在最右边**：
+//   已用 0s   → 100%（最右，从这里开始向左走）
+//   已用 10s  → 50%
+//   已用 20s  → 0%（最左，方向折返；同时文字开始显示）
+//   已用 30s  → 50%
+//   已用 40s  → 100%（最右，再次折返；同时文字开始隐藏）
+// 于是：
+//   ① 折返只发生在 20 秒的整数倍（0/20/40/60…），每 40 秒正好一个完整循环；
+//   ② 文字每 10 秒切换一次，所以每次折返都恰好落在文字切换的那一刻；
+//   ③ 20 分钟换图时"已用时长"是 20 分钟的整数倍，也必然是 40 秒的整数倍
+//      → 每张新图都从"最右 + 一个完整循环的起点"开始，永远整齐。
+const PAN_LEG_MS = 20000;              // 单程 20 秒（与原来的 CSS 动画一致）
+const PAN_CYCLE_MS = PAN_LEG_MS * 2;   // 一去一回 40 秒 = 一个完整循环
+let lastPanPos = '';                   // 缓存上一次写进去的值，值没变就不碰 DOM
+
+// 先从最右走到最左，再走回最右
+function backgroundPanPercent(totalMs) {
+    let phase = totalMs % PAN_CYCLE_MS;
+    if (phase < 0) phase += PAN_CYCLE_MS;          // 理论上不会为负（已用时长不会是负的），留着兜底
+    return phase <= PAN_LEG_MS
+        ? 100 - (phase / PAN_LEG_MS) * 100                       // 前半程：100% → 0%
+        : ((phase - PAN_LEG_MS) / PAN_LEG_MS) * 100;             // 后半程：0% → 100%
+}
+
+function syncBackgroundPan(totalMs) {
+    const pos = backgroundPanPercent(totalMs).toFixed(2) + '% 50%';
+    if (pos === lastPanPos) return;
+    lastPanPos = pos;
+    // 两层都要设：交叉淡化的时候两张图必须同步移动，否则淡入的那张会"跳"一下
+    for (let i = 0; i < bgLayerEls.length; i++) {
+        if (bgLayerEls[i]) bgLayerEls[i].style.backgroundPosition = pos;
     }
 }
 
