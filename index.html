@@ -313,6 +313,12 @@
         }
 
         /* 找到 .bg-layer，替换为以下代码 */
+        /* 背景是"两层叠着"的：
+             切换时先把新图铺在下面那一层，解码好之后再淡入，旧图同时淡出。
+             这样切换那一瞬间屏幕上始终有一张完整的背景图，
+             不会出现"新图还没解码完、这一帧没有背景"的空白闪一下。
+             （注意：CSS 的 transition 对 background-image 是不生效的，
+              所以以前那句 transition: background-image 只是死代码，靠它做不了淡入） */
         .bg-layer {
             position: absolute;
             top: 0; left: 0;
@@ -322,12 +328,18 @@
             background-size: 120% 120%; 
             background-position: center;
             z-index: 0;
-            opacity: 0.8;
-            transition: background-image 1s ease-in-out;
+
+            /* 默认透明，只有当前这张（.visible）才是 0.8 不透明度 */
+            opacity: 0;
+            transition: opacity 0.8s ease-in-out;
             
             /* 关键点2：时长设为 20s，配合 alternate (往返) 
                去程 20s + 回程 20s = 40s 一个循环 */
             animation: moveBg 20s linear infinite alternate;
+        }
+
+        .bg-layer.visible {
+            opacity: 0.8;
         }
 
         /* 找到 @keyframes moveBg，替换为以下代码 */
@@ -1267,6 +1279,7 @@
     <!-- ================= 场景 2: 计时器页面 ================= -->
     <div id="timer-screen" class="screen">
         <div class="bg-layer" id="bg-layer"></div>
+        <div class="bg-layer" id="bg-layer-alt"></div>
         <div class="overlay"></div>
 
         <!-- 当前时间浮层（毛玻璃）：开始计时后移动鼠标时短暂浮现 -->
@@ -1500,7 +1513,7 @@
         <button class="btn-confirm-flat" style="flex: 1;" onclick="closeSettingsModal()">完成</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.4.0</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.4.1</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
@@ -1542,7 +1555,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.4.0';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.4.1';   // 版本号（改动记录见 README.md）
 
         // ================= 偏好设置（设置弹窗里的开关） =================
         // 所有"可以自己选"的功能都收敛到这里，**默认全部打开**。
@@ -1705,7 +1718,10 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         const progressRing = document.getElementById('progress-ring');
         const taskNameInput = document.getElementById('task-input');
         const timerTaskName = document.getElementById('timer-task-name');
-        const bgLayer = document.getElementById('bg-layer');
+        // 背景用两层轮换：bgLayer 永远指向"当前正在显示"的那一层
+        const bgLayerEls = [document.getElementById('bg-layer'), document.getElementById('bg-layer-alt')];
+        let bgLayerIndex = 0;
+        let bgLayer = bgLayerEls[0];
         const alternatingText = document.getElementById('alternating-text');
         const pauseBtn = document.getElementById('pause-btn');
 
@@ -2341,6 +2357,8 @@ const IMG_RETRY_DELAY_MS = 1500;   // 加载失败后多久重试一次
 // "还没加载完的旧图"回调会在新图之后才执行，把背景又改回旧图，
 // 表现就是"拖了时间轴图片却不切换 / 乱切换"。
 let resourceApplyToken = 0;
+// 自动切图时：旧时期名"立刻"隐去，隔这么久再把新内容淡入（配合背景 0.8s 的淡入）
+const STAGE_SWITCH_MS = 400;
 
 function ensureImage(index) {
     if (imgCache[index]) {
@@ -2478,13 +2496,44 @@ function updateResource(idx, isFirstLoad = false, stageTextNow = false) {
     const token = ++resourceApplyToken;
     const applyBackground = () => {
         if (token !== resourceApplyToken) return;   // 已经被更新的切图取代，丢弃这个过期回调
-        bgLayer.style.backgroundImage = `url('${data.img}')`;
-        // 【关键】需要"图和文字一起切"的场景（开发者模式拖时间轴 / 续上一次），
-        // 文字就在这里改：图片没到位之前，时期名会保持和画面上那张图一致，
-        // 不会再出现"文字已经跳到太古代、图还是大爆炸"。
-        if (stageTextNow) {
-            timerTaskName.innerText = data.title;
-            alternatingText.innerText = data.quote;
+
+        // 轮到下面那一层去接新图：旧图先原样留着，等新图解码好再互相淡入淡出，
+        // 这样切换的那一瞬间屏幕上始终有一张完整背景，不会有空白帧（就是用户看到的"闪一下"）。
+        const nextLayer = bgLayerEls[1 - bgLayerIndex];
+        const prevLayer = bgLayer;
+        nextLayer.style.backgroundImage = `url('${data.img}')`;
+
+        const reveal = () => {
+            if (token !== resourceApplyToken) return;   // 期间又切了，这次作废
+            if (isFirstLoad) {
+                // 开场/开发者模式跳转：不做淡入淡出，直接铺上去（跟以前一样干脆）
+                nextLayer.style.transition = 'none';
+                nextLayer.classList.add('visible');
+                prevLayer.classList.remove('visible');
+                void nextLayer.offsetWidth;              // 强制回流，让 transition:none 立刻生效
+                nextLayer.style.transition = '';
+            } else {
+                nextLayer.classList.add('visible');      // 新图淡入
+                prevLayer.classList.remove('visible');   // 旧图淡出（0.8s）
+            }
+            bgLayerIndex = 1 - bgLayerIndex;
+            bgLayer = nextLayer;
+
+            // 【关键】需要"图和文字一起切"的场景（开发者模式拖时间轴 / 续上一次），
+            // 文字就在这里改：图片没到位之前，时期名会保持和画面上那张图一致。
+            if (stageTextNow) {
+                timerTaskName.innerText = data.title;
+                alternatingText.innerText = data.quote;
+            }
+        };
+
+        // 【关键】等新图解码完成再换上去。
+        // 直接改 backgroundImage 的话，浏览器要现场解码（这些图都是 2560px 的大图），
+        // 解码那一帧背景是空的 → 用户看到"闪一下"。
+        if (img && typeof img.decode === 'function') {
+            img.decode().then(reveal, reveal);   // 解码失败也照样换（有别的兜底）
+        } else {
+            reveal();
         }
     };
     if (img.complete && img.naturalWidth > 0) {
@@ -2495,20 +2544,35 @@ function updateResource(idx, isFirstLoad = false, stageTextNow = false) {
             
             // 2. 如果不是第一次加载（中间自动切图），按正常逻辑淡入淡出
             if (!isFirstLoad) {
+                // 【修复】切换瞬间旧时期名要"立刻消失"：
+                //   原来用的是 CSS 里 1.5s 的透明度过渡，等它慢慢淡出的同时下面 1 秒后就把
+                //   文字换成新的了 —— 于是新旧文字会混在一起、看起来"闪一下又跳一下"。
+                //   这里临时关掉过渡，先把旧文字瞬间藏掉。
+                timerTaskName.style.transition = 'none';
+                alternatingText.style.transition = 'none';
                 timerTaskName.classList.add('hidden');
                 alternatingText.classList.add('hidden');
-                textHidden = true;                 // 与呼吸相位状态保持一致
+                textHidden = true;
+
+                // 【修复】换字的这段时间里，禁止呼吸相位把旧文字重新显示出来。
+                //   rAF 每帧都会调 syncBreathing()，不挡住的话旧时期名会立刻又冒出来，
+                //   这就是"先显示上一阶段的文字，再跳到下一阶段"的直接原因。
+                breathingSuppressedUntil = performance.now() + STAGE_SWITCH_MS + 100;
+
                 setTimeout(() => {
                     if (token !== resourceApplyToken) return;   // 已被更新的切图取代，别再改文字
+                    // 先把新内容写进去（此刻文字还是隐藏的，不会看到新旧交替）
                     timerTaskName.innerText = data.title;
                     alternatingText.innerText = data.quote;
-                    // 【修复】只负责换内容，可见性交回给呼吸相位决定，
-                    // 否则"换图时刻恰好该隐藏"时文字会被永久卡在可见状态。
+                    // 再恢复 CSS 里的淡入过渡，然后交给呼吸相位决定到底显示还是隐藏
+                    timerTaskName.style.transition = '';
+                    alternatingText.style.transition = '';
                     textHidden = false;
                     timerTaskName.classList.remove('hidden');
                     alternatingText.classList.remove('hidden');
-                    syncBreathing(lastTotalMs);
-                }, 1000);
+                    breathingSuppressedUntil = 0;      // 换好了，相位立刻生效
+                    syncBreathing(lastTotalMs);        // 该藏就同一次里立刻藏，不会闪一帧
+                }, STAGE_SWITCH_MS);
             } 
             // 如果是 isFirstLoad (刚开始)，文字由 startFocus 和 startTextAnim 控制，这里不操作
         }
