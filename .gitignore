@@ -1,5 +1,6 @@
 # 备份文件：里面是你自己的学习记录，不要提交到公开仓库
-timing-backup.json
+# 用通配符是因为浏览器遇到重名会存成 "timing-backup (1).json" 这种形式
+timing-backup*.json
 Timing_备份_*.json
 
 # 系统垃圾
