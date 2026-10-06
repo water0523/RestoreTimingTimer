@@ -15,9 +15,10 @@
  *    否则老访客的 Service Worker 会继续用缓存里的旧图。
  */
 
-const CACHE_VERSION = 'v1';
-const IMAGE_CACHE = `timing-images-${CACHE_VERSION}`;
-const PAGE_CACHE = `timing-pages-${CACHE_VERSION}`;
+const CACHE_VERSION = 'v2';
+const CACHE_PREFIX = 'restoretimingtimer-';
+const IMAGE_CACHE = `${CACHE_PREFIX}images-${CACHE_VERSION}`;
+const PAGE_CACHE = `${CACHE_PREFIX}pages-${CACHE_VERSION}`;
 
 self.addEventListener('install', () => {
     // 新版本立刻接管，不用等所有旧页面关闭
@@ -29,7 +30,8 @@ self.addEventListener('activate', (event) => {
         const keys = await caches.keys();
         await Promise.all(
             keys
-                .filter((key) => key !== IMAGE_CACHE && key !== PAGE_CACHE)
+                .filter((key) => (key.startsWith(CACHE_PREFIX) || key === 'timing-images-v1' || key === 'timing-pages-v1')
+                    && key !== IMAGE_CACHE && key !== PAGE_CACHE)
                 .map((key) => caches.delete(key))
         );
         await self.clients.claim();

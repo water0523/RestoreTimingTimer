@@ -1,6 +1,6 @@
 # timing 计时器（RestoreTimingTimer）
 
-**v1.4.3**（本地版本；GitHub Pages 上目前跑的是 v1.4.2）
+**v1.5.0**
 
 单文件（`index.html`）的沉浸式学习计时器：设定时长 → 全屏背景 + 进度环 → 到点提醒 → 记录 / 导出。
 所有可选项都在设置弹窗里（默认全开），云同步已在 v1.3.0 移除。
@@ -33,7 +33,7 @@ python -m http.server 8000     # 然后打开 http://localhost:8000/
   秒级定时器只在浮层可见时挂，并且对齐真实整秒（不会越走越慢）。
 - **记住上次设置**：任务名和学习时长会记下来，下次打开自动回填（时长只提示"已记住上次设置"，不写死结束时间）。
 - **到点提醒**：总结弹窗 + 标签页标题闪烁 `⏰ 时间到！`。**本应用不播放任何声音**，没有音效代码。
-- **历史记录合计**：列表顶部吸顶显示"共 N 条 · 今日 X · 本周 X"与"累计 X"。
+- **历史记录合计**：列表顶部吸顶显示"共 N 条 · 今日 X · 本周 X"与"累计 X"。今日、本周、热力图与连续天数统一按专注开始日期归属，跨午夜保存或暂存后隔天继续也不算到保存当天。
 - **历史记录可改名**：在历史里点一下任务名就能改（`Enter` 保存 / `Esc` 取消 / 点别处保存），
   只改标题，时长、开始时间和备注都不动。
 - **专注热力图**：历史记录里有一张类似 GitHub 贡献图的热力图（最近 18 周，列 = 周、行 = 星期）：
@@ -120,7 +120,8 @@ localStorage（键名 `timing_prefs`，一条 JSON）。
 
 - **覆盖合并**：同一个 `id` 只保留一条；本机改过任务名以本机为准；文件里本机没有的记录会被保留下来
   （所以两台设备先后各写一次，文件里两份记录都在）。
-- **删除同步**：在历史里删掉一条，备份文件里对应那条也会一并移除，免得下次合并又把它带回来。
+- **删除同步与撤销**：删除标记保留在本机和备份中，即使删除时未获授权或写入失败，下次备份也不会带回旧记录。在历史窗口点「撤销最近删除」可逐条恢复本页删除的记录；刷新后撤销入口清空，删除标记仍保留。
+- **安全写入**：同一页面的写入依次排队，浏览器支持时跨标签页也协调执行；备份文件读取失败、损坏或格式不正确时停止写入，保留原文件。
 - 想换位置点「更改文件」；「断开」只是不再写这个文件，本机记录不会被动。
 - 前提：网页没有权限直接往任意磁盘路径写文件，所以必须由你**选一次**文件（Chrome / Edge 支持，
   本地双击 `index.html` 也能用）。浏览器不支持时会提示改用历史记录里的「导出备份」（下载一份
@@ -130,6 +131,37 @@ localStorage（键名 `timing_prefs`，一条 JSON）。
 > 老版本存在浏览器里的 Token 会在升级后第一次打开页面时被自动清除。
 > 跨设备搬记录请用历史记录弹窗里的「📤 导出备份 / 📥 导入备份」，或者上面这个固定备份文件。
 
+## 导入预览、合并与删除撤销
+
+历史窗口点击「导入备份」选中 JSON 后，先显示预览，确认前不会改动本机记录：
+
+- 默认「合并」，保留本机已有记录并补充备份中的新记录；按 ID 去重。
+- 预览显示新增、重复、冲突数量、最终记录数和删除标记影响，列出前 30 条明细；确认时处理全部记录。
+- 同 ID 内容不同默认保留本机内容，也可选择采用备份内容。
+- 保留「覆盖」方式：替换本机记录，确认时再次提示；已有删除标记仍然有效。
+- 逐条验证记录、任务建议计数和删除状态；无效文件整体拒绝，避免写坏本机数据。存储写入失败会尝试恢复此前已写入的本地键。
+- 在历史窗口点「撤销最近删除」可按最近删除顺序逐条恢复，任务名、原开始时间、时长、备注和 ID 都保留，备份中的删除状态也随之更新。
+
+### 按开始日期统计旧记录
+
+新记录保存标准开始时间戳，原来的开始时间显示文字仍保留。旧记录通过原 `startTime` 解析开始日期，支持中文年/月/日、上午/下午和常见英文时间格式，因此昨天专注、今天保存的旧记录也会归到昨天。
+
+无法识别开始日期的旧记录不猜测日期：保留记录与累计时长，统计栏提示数量，不纳入今日、本周、热力图及连续天数。整段专注归属开始日期，不在午夜拆分。
+
+## 全文案赏析
+
+设置中新增「全文案赏析」，在新标签页打开：[阅读完整赏析](https://mp.weixin.qq.com/s/4gqoo0NMCwGUwEPzBJJqTQ)。
+
+## 本地回归测试
+
+需要 Node.js 20 或以上，无须安装第三方测试依赖：
+
+```bash
+node --test tests/regression.test.cjs
+```
+
+测试覆盖备份失败后删除不复活、并发写入、坏文件保护、导入校验与预览、冲突选择、删除撤销、开始日期统计、缓存隔离、取消预加载和完成进度环。测试使用独立的内存数据，不访问你的实际专注记录。
+
 ## 已知限制
 
 - 计时过程中刷新页面的情况已被"自动恢复"覆盖：最多丢 5 秒，回主页点"继续"即可接着跑。
@@ -138,7 +170,16 @@ localStorage（键名 `timing_prefs`，一条 JSON）。
 
 ## 更新日志
 
-### v1.4.3（本地版本，尚未推送）
+### v1.5.0
+
+- 修复：备份授权失败后删除记录再次进入备份、并发写入覆盖较新内容、坏备份被当作空文件覆盖、导入缺少逐条校验。
+- 修复：Service Worker 清理其他同源应用缓存、预加载被取消后仍发起备用请求、整 20 分钟完成时进度环归零。
+- 新增：导入预览、默认合并与冲突选择、当前页面内逐条撤销删除。
+- 修正：热力图、连续天数、今日和本周合计按开始日期统计，兼容旧记录，使用日历计算跨日以避免夏令时偏移。
+- 新增：设置内「全文案赏析」、下方 24 条图片来源与文案资料，以及可复跑的回归测试。
+
+
+### v1.4.3
 
 - 修复：**第 23 幅（太阳毁灭）和第 24 幅（宇宙毁灭）的文案完全一样**，
   连着两段显示同一句话。
@@ -327,3 +368,34 @@ localStorage（键名 `timing_prefs`，一条 JSON）。
 - 桌面端：`空格` / `Esc` 快捷键、计时中离开页面确认、弹窗内可选中文字。
 - 移除：所有音效相关代码（本应用不发声）。
 - 清理：删掉 `timing/` 陈旧副本（旧版 `timing.html` + 1 字节空白 `index.html`）。
+
+## 24 个阶段：图片来源与文案
+
+以下为图片来源资料；应用实际仍使用随附的本地 WebP 图片。
+
+| 序号 | 阶段 | 文案 | 图片来源 |
+| --- | --- | --- | --- |
+| 1 | 大爆炸 | 宇宙由这一刻诞生，你的征程也由此开始。 | [来源 1](https://wall.alphacoders.com/big.php?i=689592) |
+| 2 | 太阳系 | 太阳系正在慢慢形成，万事开头难。 | [来源 2](https://www.wallpaperflare.com/static/67/625/250/planet-space-two-planets-wallpaper.jpg) |
+| 3 | 地球形成 | 孕育生命的摇篮，似乎有灵感涌上心头？ | [来源 3](https://wallpaper-house.com/data/out/10/wallpaper2you_424783.jpg) |
+| 4 | 太古代 | 第一个生命诞生了，是否得到了某种启发呢？ | [来源 4](https://www.baltana.com/nature/lava-wallpaper-17417.html) |
+| 5 | 震旦纪 | 进化是最伟大的馈赠，在不知不觉中，你正在感受进步。 | [来源 5](https://cdn-imgproxy.mamado.su/DrFK-t5TA15AHpVOJJKKXcYSQIVK7xn9bihWrInNmfY/rs:fit:2000:2000:1/g:ce/q:90/czM6Ly9tYW1hZG8t/YXBpLXByb2R1Y3Rp/b24vc3RvcmFnZS8x/MzQ4NTE0LzkzMzAz/NDgyMjJfOGVhNzcw/Y2RlNl9iLmpwZw.webp) |
+| 6 | 寒武纪 | 鱼类最活跃的时期，鱼儿水中游，时光一去不回头。 | [来源 6](https://wallpaperaccess.com/full/280160.jpg) |
+| 7 | 奥陶纪 | 大陆板块形成，更大的挑战即将来临。 | [来源 7](https://sppagebuilder.com/images/2021/wanderlust/destination-img2.jpg) |
+| 8 | 泥盆纪 | 陆地的感觉好吗？请抓紧每一分钟。 | [来源 8](https://ga.de/bonn/stadt-bonn/aeltester-wald-der-welt-soll-in-lindlar-gestanden-haben_aid-42489813) |
+| 9 | 石炭纪 | 火山开始喷发，大型爬行动物诞生了，是否有所收获了？ | [来源 9](https://wallpaperbat.com/img/356655-wallpaper-mountain-5k-4k-wallpaper-indonesia-desert-clouds.jpg) |
+| 10 | 三叠纪 | 山峰丛林开始形成，注意静心。 | [来源 10](https://www.insightvacations.com/blog/7-reasons-go-guided-us-national-parks/) |
+| 11 | 侏罗纪 | 恐龙横行的年代，保持专注，克服难关。 | [来源 11](https://get.wallhere.com/photo/2245x1275-px-artwork-dinosaurs-1265425.jpg) |
+| 12 | 白垩纪 | 恐龙灭绝，现在可以告一段落了。 | [来源 12](https://wall.alphacoders.com/big.php?i=788900) |
+| 13 | 古代 | 人类的祖先在这篇大陆上开疆辟土，学习有时候需要互相帮助。 | [来源 13](https://eskipaper.com/images/pyramid-fantasy-wallpaper-1.jpg) |
+| 14 | 部落 | 听说印第安人始终保持着这样的生活方式，今天的学习到这里也可以结束了。 | [来源 14](https://get.pxhere.com/photo/hand-girl-finger-human-nail-close-up-hand-model-1412088.jpg) |
+| 15 | 村庄 | 人类不再到处游荡，有了自己固定的“家”，记得回忆和巩固自己今天的学习。 | [来源 15](https://i.pinimg.com/originals/d7/7e/d4/d77ed4f21497b07151880e4d50b0db03.jpg) |
+| 16 | 人群 | 人多力量大？前提是要有着共同的目标。 | [来源 16](https://www.airdev.co/case-studies/ticketrev-marketplace-startup-bubble) |
+| 17 | 近代 | 王国，朝代逐渐形成，注意归纳你所学的知识。 | [来源 17](https://i1.pickpik.com/photos/597/234/573/5968782224741-c105354d98ebb985a213f09d77a9b751.jpg) |
+| 18 | 现代 | 我们所生活的年代，注意劳逸结合。 | [来源 18](https://images.hdqwalls.com/download/hot-air-balloons-open-sky-4k-sm-3840x2400.jpg) |
+| 19 | 城市 | 繁荣时期，去做做别的事情吧。 | [来源 19](https://1.bp.blogspot.com/-980EugtJ3dc/X_8HM4vqD2I/AAAAAAAAQkk/4hxQ8YnHBFQrP9-dxQFrvalYQHFgIrj3gCLcBGAsYHQ/s2048/piotr-chrobot-6oUsyeYXgTg-unsplash.jpg) |
+| 20 | 未来城市 | 人类科技的巅峰，每天的知识获取量是有限的。 | [来源 20](https://i.pinimg.com/originals/e8/23/01/e82301aaa2ea81f52964dafa301ca067.jpg) |
+| 21 | 核爆炸 | 物极必反，人类如此，学习也是如此。 | [来源 21](https://i0.wp.com/awesomewallpapersblog.com/wp-content/uploads/2015/08/3d_fantasy_places_hd_0026.jpg?ssl=1) |
+| 22 | 地球毁灭 | 世界的尽头，它必将发生。过度的学习，会影响短期记忆。 | [来源 22](https://joyreactor.cc/post/954288) |
+| 23 | 太阳毁灭 | 生命迹象消失，进入效率低下期。 | [来源 23](https://wallpapercave.com/wp/wp4670044.jpg) |
+| 24 | 宇宙毁灭 | 宇宙归于沉寂，你的征程也走完了，去好好休息吧。 | [来源 24](https://cerenas.club/uploads/posts/2022-12/1670880515_cerenas-club-p-krasivii-fon-dlya-yandeksa-vkontakte-69.jpg) |

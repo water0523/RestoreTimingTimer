@@ -809,6 +809,15 @@
     transform: translate(-50%, -50%) scale(1);
 }
 .wide-modal { max-width: 600px; }
+.import-options label { display:block; color:#666; font-size:13px; margin-bottom:6px; }
+.import-options select { width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; background:#fafafa; color:#333; font:inherit; }
+.import-mode-note { font-size:13px; color:#777; line-height:1.6; }
+.import-preview-row { padding:12px 0; border-bottom:1px solid #eee; color:#333; }
+.import-preview-row strong { font-size:14px; overflow-wrap:anywhere; }
+.import-preview-row span { float:right; color:#2196F3; font-size:12px; }
+.import-preview-row small { display:block; margin-top:6px; color:#888; }
+.appreciation-link { display:inline-block; text-decoration:none; color:#1976D2; }
+.history-undo-bar { flex-wrap:wrap; }
 
 .modal-title { font-size: 20px; font-weight: bold; margin-bottom: 10px; color: #333; }
 .modal-info { font-size: 16px; color: #666; margin-bottom: 20px; }
@@ -1240,7 +1249,7 @@
             <span class="resume-discard" onclick="discardSuspended()" title="丢弃暂存的进度">丢弃</span>
         </div>
         <!-- 设置齿轮按钮 -->
-        <button class="settings-gear" onclick="openSettingsModal()" title="云同步设置">&#9881;</button>
+        <button class="settings-gear" onclick="openSettingsModal()" title="设置">&#9881;</button>
         <!-- 底部开始按钮 -->
         <div class="start-btn-container">
             <button class="start-btn" onclick="startFocus()">开始学习</button>
@@ -1349,6 +1358,10 @@
         <div class="close-icon" onclick="closeHistoryModal()">×</div>
     </div>
 
+    <div class="resume-bar history-undo-bar" id="history-undo-bar" role="status" style="display:none; margin-bottom:12px;">
+        <span class="resume-text" id="history-undo-text"></span>
+        <button class="btn-mini" onclick="undoHistoryDelete()">撤销最近删除</button>
+    </div>
     <div class="history-list-container" id="history-list-content">
         <!-- JS 动态填充 -->
     </div>
@@ -1369,6 +1382,36 @@
     </div>
 </div>
 
+<!-- 导入先预览，确认后才写入；叠在历史弹窗之上。 -->
+<div class="modal-overlay" id="import-overlay" onclick="closeImportPreview()" style="z-index:210;"></div>
+<div class="center-modal wide-modal" id="import-modal" role="dialog" aria-modal="true" aria-labelledby="import-title" style="z-index:220;">
+    <div class="modal-header-row">
+        <div class="modal-title" id="import-title">导入预览</div>
+        <button class="btn-mini" onclick="closeImportPreview()" aria-label="关闭导入预览">关闭</button>
+    </div>
+    <div class="import-options">
+        <label for="import-mode">导入方式</label>
+        <select id="import-mode" onchange="renderImportPreview()">
+            <option value="merge">合并：保留本机记录并补充备份</option>
+            <option value="replace">覆盖：替换本机记录</option>
+        </select>
+        <div id="import-conflict-row" style="margin-top:10px;">
+            <label for="import-conflict">重复记录的内容不一致</label>
+            <select id="import-conflict" onchange="renderImportPreview()">
+                <option value="local">保留本机内容</option>
+                <option value="file">采用备份内容</option>
+            </select>
+        </div>
+    </div>
+    <p id="import-mode-note" class="import-mode-note"></p>
+    <div id="import-preview-summary" class="modal-info" style="white-space:pre-line; font-size:14px;"></div>
+    <div id="import-preview-list" class="history-list-container"></div>
+    <div class="modal-btns">
+        <button class="btn-cancel-flat" onclick="closeImportPreview()">取消</button>
+        <button class="btn-confirm-flat" onclick="applyImportPreview()">确认导入</button>
+    </div>
+</div>
+
 <!-- ================= 弹窗: 设置（所有可选项都在这里，默认全开） ================= -->
 <div class="modal-overlay" id="settings-overlay" onclick="closeSettingsModal()"></div>
 <div class="center-modal" id="settings-modal">
@@ -1381,6 +1424,9 @@
         下面这些都可以自己选，改动立刻生效并存在这台设备上，默认全部打开。
     </div>
 
+    <div class="settings-field">
+        <a class="btn-mini appreciation-link" href="https://mp.weixin.qq.com/s/4gqoo0NMCwGUwEPzBJJqTQ" target="_blank" rel="noopener noreferrer">全文案赏析 ↗</a>
+    </div>
     <div class="settings-section-title">通用</div>
 
     <div class="settings-field">
@@ -1554,7 +1600,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.4.3';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.5.0';   // 版本号（改动记录见 README.md）
 
         // ================= 偏好设置（设置弹窗里的开关） =================
         // 所有"可以自己选"的功能都收敛到这里，**默认全部打开**。
@@ -2166,6 +2212,11 @@ function startTimerLogic(isResume) {
             // --- B. 更新进度条 (使用毫秒计算，丝滑无停顿) ---
             const cycleTimeMs = CYCLE_MS; // 20分钟 = 1200000毫秒
             const totalTargetMs = totalDurationMinutes * 60 * 1000;
+            // 完成时停在满环，不能按取模进入下一圈并显示空环。
+            if (totalTargetMs > 0 && currentMs >= totalTargetMs) {
+                progressRing.style.strokeDashoffset = 0;
+                return;
+            }
 
             // 1. 当前周期的起始毫秒数
             let currentCycleStartMs = Math.floor(currentMs / cycleTimeMs) * cycleTimeMs;
@@ -2472,7 +2523,10 @@ function loadOneForCache(index) {
                 if (!res || !res.ok) throw new Error('HTTP ' + (res && res.status));
                 return true;
             })
-            .catch(() => loadOneByImage(url));
+            .catch((err) => {
+                if ((err && err.name === 'AbortError') || (signal && signal.aborted)) return false;
+                return loadOneByImage(url);
+            });
     }
     return loadOneByImage(url);
 }
@@ -3115,7 +3169,9 @@ function discardSuspended() {
             }
 
             if (e.key === 'Escape') {
-                if (document.getElementById('summary-modal').classList.contains('active')) {
+                if (document.getElementById('import-modal').classList.contains('active')) {
+                    closeImportPreview();
+                } else if (document.getElementById('summary-modal').classList.contains('active')) {
                     closeSummary(false);
                 } else if (document.getElementById('history-modal').classList.contains('active')) {
                     closeHistoryModal();
@@ -3372,6 +3428,7 @@ function saveAndExit() {
         id: Date.now(),
         task: taskName, // 现在这里保存的就是正确的任务名了
         startTime: startTimeStr,
+        startedAt: sessionStartTimeObj ? sessionStartTimeObj.getTime() : Date.now(),
         duration: durationStr,
         note: note
     };
@@ -3379,7 +3436,10 @@ function saveAndExit() {
     // 5. 保存到 LocalStorage (immersiveHistory)
     let historyList = readHistory();
     historyList.unshift(record);
-    localStorage.setItem('immersiveHistory', JSON.stringify(historyList));
+    if (!commitLocalData(historyList, getHistory(), readRecordStates())) {
+        alert('保存失败：本地存储不可用或空间不足，当前记录仍保留在总结弹窗。');
+        return;
+    }
 
     // 6. 下拉建议的计数在 startFocus 时已经记过一次，这里不再重复计数
     //    （原来两处都记，导致同一个任务被算两次）
@@ -3413,11 +3473,8 @@ async function openHistoryModal() {
 // ================= 统计：今日 / 本周 / 累计 =================
 // 记录里的 duration 是 "H小时M分S秒" 这种字符串，这里解析回秒数
 function parseDurationSeconds(text) {
-    const m = /(?:(\d+)\s*小时)?\s*(?:(\d+)\s*分)?\s*(?:(\d+)\s*秒)?/.exec(String(text || ''));
-    if (!m) return 0;
-    return (parseInt(m[1] || '0', 10) * 3600)
-        + (parseInt(m[2] || '0', 10) * 60)
-        + parseInt(m[3] || '0', 10);
+    const seconds = parseDurationValue(text);
+    return seconds === null ? 0 : seconds;
 }
 
 function formatDurationCn(seconds) {
@@ -3430,26 +3487,24 @@ function formatDurationCn(seconds) {
 
 function renderHistorySummary(list) {
     const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const mondayOffset = (now.getDay() + 6) % 7;            // 以周一作为一周的开始
-    const weekStart = todayStart - mondayOffset * 86400000;
-
-    let todaySec = 0;
-    let weekSec = 0;
-    let totalSec = 0;
-
-    list.forEach((item) => {
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const monday = new Date(today); monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+    const nextMonday = new Date(monday); nextMonday.setDate(nextMonday.getDate() + 7);
+    let todaySec = 0, weekSec = 0, totalSec = 0, missingDates = 0;
+    list.forEach(item => {
         const sec = parseDurationSeconds(item.duration);
-        const savedAt = Number(item.id) || 0;               // id 就是保存时的 Date.now()
+        const startedAt = recordStartedAt(item);
         totalSec += sec;
-        if (savedAt >= todayStart) todaySec += sec;
-        if (savedAt >= weekStart) weekSec += sec;
+        if (startedAt === null) { missingDates++; return; }
+        if (startedAt >= today.getTime() && startedAt < tomorrow.getTime()) todaySec += sec;
+        if (startedAt >= monday.getTime() && startedAt < nextMonday.getTime()) weekSec += sec;
     });
-
     return `
         <div class="history-summary">
             <div>共 ${list.length} 条 · 今日 ${formatDurationCn(todaySec)} · 本周 ${formatDurationCn(weekSec)}</div>
-            <div class="history-summary-sub">累计 ${formatDurationCn(totalSec)}</div>
+            <div class="history-summary-sub">累计 ${formatDurationCn(totalSec)} · 按开始日期统计</div>
+            ${missingDates ? `<div class="history-summary-sub">${missingDates} 条旧记录的开始日期无法识别，仅计入累计。</div>` : ''}
         </div>
     `;
 }
@@ -3466,9 +3521,9 @@ function formatDayKey(date) {
 function buildDailyStats(list) {
     const daily = {};
     (list || []).forEach((item) => {
-        const savedAt = Number(item.id) || 0;         // id 就是保存时的 Date.now()
-        if (!savedAt) return;
-        const key = formatDayKey(new Date(savedAt));
+        const startedAt = recordStartedAt(item);
+        if (startedAt === null) return;
+        const key = formatDayKey(new Date(startedAt));
         if (!daily[key]) daily[key] = { seconds: 0, count: 0 };
         daily[key].seconds += parseDurationSeconds(item.duration);
         daily[key].count += 1;
@@ -3513,16 +3568,20 @@ function renderHeatmap(list) {
     const today = new Date();
     const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const mondayOffset = (todayStart.getDay() + 6) % 7;                                  // 周一 = 0
-    const lastMonday = new Date(todayStart.getTime() - mondayOffset * 86400000);         // 本周一
-    const firstDay = new Date(lastMonday.getTime() - (HEATMAP_WEEKS - 1) * 7 * 86400000); // 第一列的周一
+    const lastMonday = new Date(todayStart);
+    lastMonday.setDate(lastMonday.getDate() - mondayOffset);
+    const firstDay = new Date(lastMonday);
+    firstDay.setDate(firstDay.getDate() - (HEATMAP_WEEKS - 1) * 7);
 
     let cells = '';
     const weekMonths = [];
     for (let w = 0; w < HEATMAP_WEEKS; w++) {
-        const weekStart = new Date(firstDay.getTime() + w * 7 * 86400000);
+        const weekStart = new Date(firstDay);
+        weekStart.setDate(firstDay.getDate() + w * 7);
         weekMonths.push(weekStart.getMonth());
         for (let d = 0; d < 7; d++) {
-            const day = new Date(weekStart.getTime() + d * 86400000);
+            const day = new Date(weekStart);
+            day.setDate(weekStart.getDate() + d);
             if (day.getTime() > todayStart.getTime()) {
                 cells += '<div class="hm-cell hm-empty"></div>';    // 未来的日期留空
                 continue;
@@ -3560,7 +3619,7 @@ function renderHeatmap(list) {
                 <span class="heatmap-title">专注热力图</span>
                 <span class="heatmap-head-right">
                     ${streakHtml}
-                    <span class="heatmap-help" title="灰 = 当天没用过；蓝 = 用过；紫 = 当天超过 4 小时；红 = 当天满 8 小时。点圆点看当天明细。">?</span>
+                    <span class="heatmap-help" title="按专注开始日期归属。灰 = 当天没用过；蓝 = 用过；紫 = 当天超过 4 小时；红 = 当天满 8 小时。点圆点看当天明细。">?</span>
                 </span>
             </div>
             <div class="heatmap-body">
@@ -3605,7 +3664,9 @@ function showHeatmapDetail(cell) {
 // 单纯负责渲染（渲染顺序必须和 localStorage 里的一致，删除按钮靠下标定位）
 function renderHistoryList(list) {
     const container = document.getElementById('history-list-content');
-    const safeList = Array.isArray(list) ? list : [];   // 【加固】任何情况下都当数组处理
+    const sourceList = Array.isArray(list) ? list : [];
+    const safeList = sourceList.filter(item => item && typeof item === 'object');
+    refreshUndoBar();
 
     let html = '';
     if (prefs.historySummary) html += renderHistorySummary(safeList);
@@ -3617,7 +3678,8 @@ function renderHistoryList(list) {
         container.innerHTML = html;
         return;
     }
-    safeList.forEach((item, index) => {
+    sourceList.forEach((item, index) => {
+        if (!item || typeof item !== 'object') return; // 旧数据含空项时仍保留原下标
         const editing = (index === editingHistoryIndex);
         html += `
             <div class="history-row">
@@ -3638,7 +3700,7 @@ function renderHistoryList(list) {
     });
     container.innerHTML = html;
 
-    bindHistoryTaskEditors(container, safeList);
+    bindHistoryTaskEditors(container, sourceList);
 
     // 热力图：点圆点看当天明细（事件委托，避免给每个格子挂监听）
     const grid = container.querySelector('.hm-grid');
@@ -3686,7 +3748,11 @@ function updateHistoryTask(index, newTitle) {
         return false;
     }
     item.task = title;
-    localStorage.setItem('immersiveHistory', JSON.stringify(list));
+    if (!commitLocalData(list, getHistory(), readRecordStates())) {
+        alert('改名失败：本地存储不可用或空间不足。');
+        renderHistoryList(readHistory());
+        return false;
+    }
     autoWriteBackup();          // 备份文件里也跟着改名（合并时本地优先）
     renderHistoryList(list);
     return true;
@@ -3729,21 +3795,53 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// 新增：删除单条历史记录 (无确认)
+// 撤销栈只在当前页面保留；删除/恢复状态则永久参与备份合并。
+const historyUndoStack = [];
+
+function refreshUndoBar() {
+    const bar = document.getElementById('history-undo-bar');
+    bar.style.display = historyUndoStack.length ? 'flex' : 'none';
+    document.getElementById('history-undo-text').textContent = historyUndoStack.length
+        ? '已删除「' + historyUndoStack[historyUndoStack.length - 1].record.task + '」' : '';
+}
+
 function deleteHistoryItem(index) {
-    let list = readHistory();
-    
-    // 删除对应索引的元素（先记下 id：备份文件里也要同步删掉，否则下次合并又会被加回来）
+    const list = readHistory();
+    if (!Number.isInteger(index) || index < 0 || index >= list.length) return false;
     const removed = list[index];
+    if (!removed || typeof removed !== 'object') return false;
+    const states = readRecordStates();
+    changeRecordState(states, removed.id, true);
     list.splice(index, 1);
-    
-    // 保存回本地
-    localStorage.setItem('immersiveHistory', JSON.stringify(list));
-    
-    autoWriteBackup(removed && removed.id !== undefined ? [removed.id] : []);
-    
-    // 【修复】这里只重渲染本地列表（云同步已在 v1.3.0 移除）
+    if (!commitLocalData(list, getHistory(), states)) {
+        alert('删除失败：本地存储不可用或空间不足。');
+        return false;
+    }
+    historyUndoStack.push({ record: removed, index });
+    editingHistoryIndex = null;
+    autoWriteBackup();
     renderHistoryList(list);
+    return true;
+}
+
+function undoHistoryDelete() {
+    const entry = historyUndoStack[historyUndoStack.length - 1];
+    if (!entry) return false;
+    const list = readHistory();
+    if (!list.some(item => item && String(item.id) === String(entry.record.id))) {
+        list.splice(Math.min(entry.index, list.length), 0, entry.record);
+    }
+    const states = readRecordStates();
+    changeRecordState(states, entry.record.id, false);
+    if (!commitLocalData(list, getHistory(), states)) {
+        alert('撤销失败：本地存储不可用或空间不足。');
+        return false;
+    }
+    historyUndoStack.pop();
+    editingHistoryIndex = null;
+    autoWriteBackup();
+    renderHistoryList(list);
+    return true;
 }
 
 function closeHistoryModal() {
@@ -3913,7 +4011,240 @@ function syncBackgroundPan(totalMs) {
             }
         });
 
-        // ================= 数据备份与恢复 (同步功能) =================
+        // ================= 数据备份与恢复 =================
+
+// 记录与备份共用的校验和时间转换；显示文案仍兼容旧版。
+const RECORD_STATES_KEY = 'timing_recordStates';
+
+function isValidTimestamp(value) {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+        && !Number.isNaN(new Date(value).getTime());
+}
+
+function parseLegacyStartTime(value) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const text = value.trim().replace(/[\u200e\u200f\u202f]/g, ' ')
+        .replace(/年|月/g, '/').replace(/日/g, ' ').trim();
+    // toLocaleString 的中文年/月/日格式，包括上午/下午。
+    let match = /^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})[ ,]+(?:(上午|下午)\s*)?(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?$/.exec(text);
+    if (match) {
+        let hour = Number(match[5]);
+        if (match[4]) {
+            if (hour < 1 || hour > 12) return null;
+            hour = hour % 12 + (match[4] === '下午' ? 12 : 0);
+        }
+        const year = Number(match[1]), month = Number(match[2]), day = Number(match[3]);
+        const minute = Number(match[6]), second = Number(match[7] || 0);
+        const date = new Date(year, month - 1, day, hour, minute, second);
+        if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day
+            || hour > 23 || minute > 59 || second > 59) return null;
+        return date.getTime();
+    }
+    // ISO 或浏览器导出的英文格式。无法识别时不猜测为保存日期。
+    const parsed = Date.parse(text);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function recordStartedAt(item) {
+    if (!item || typeof item !== 'object') return null;
+    return isValidTimestamp(item.startedAt) ? item.startedAt : parseLegacyStartTime(item.startTime);
+}
+
+function parseDurationValue(text) {
+    if (typeof text !== 'string') return null;
+    const match = /^(?:(\d+)\s*小时)?\s*(?:(\d+)\s*分)?\s*(?:(\d+)\s*秒)?$/.exec(text.trim());
+    if (!match || !match.slice(1).some(v => v !== undefined)) return null;
+    const hours = Number(match[1] || 0), minutes = Number(match[2] || 0), seconds = Number(match[3] || 0);
+    const total = hours * 3600 + minutes * 60 + seconds;
+    return Number.isSafeInteger(total) && minutes < 60 && seconds < 60 ? total : null;
+}
+
+function normalizeRecord(item, label) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error(label + '不是有效记录');
+    const validId = (typeof item.id === 'number' && Number.isSafeInteger(item.id) && item.id > 0)
+        || (typeof item.id === 'string' && item.id.trim() && item.id.length <= 256);
+    if (!validId || typeof item.task !== 'string' || typeof item.startTime !== 'string'
+        || parseDurationValue(item.duration) === null || (item.note !== undefined && typeof item.note !== 'string')) {
+        throw new Error(label + '的 ID、任务名、开始时间、时长或备注格式不正确');
+    }
+    if (item.startedAt !== undefined && !isValidTimestamp(item.startedAt)) throw new Error(label + '的开始时间戳无效');
+    const normalized = Object.assign({}, item, { note: item.note || '' });
+    const started = recordStartedAt(item);
+    if (started !== null) normalized.startedAt = started;
+    return normalized;
+}
+
+function validateRecordStates(input) {
+    if (input === undefined) return Object.create(null);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('删除状态格式不正确');
+    const result = Object.create(null);
+    Object.keys(input).forEach(id => {
+        const state = input[id];
+        if (!id || !state || typeof state.deleted !== 'boolean' || !isValidTimestamp(state.changedAt)) {
+            throw new Error('删除状态包含无效记录');
+        }
+        result[id] = { deleted: state.deleted, changedAt: state.changedAt };
+    });
+    return result;
+}
+
+function validateBackupPayload(data) {
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.history)
+        || !data.stats || typeof data.stats !== 'object' || Array.isArray(data.stats)) {
+        throw new Error('这不是有效的 Timing 备份文件');
+    }
+    const ids = new Set();
+    const history = data.history.map((item, i) => {
+        const normalized = normalizeRecord(item, '第 ' + (i + 1) + ' 条记录');
+        const id = String(normalized.id);
+        if (ids.has(id)) throw new Error('备份包含重复 ID：' + id);
+        ids.add(id);
+        return normalized;
+    });
+    const stats = Object.create(null);
+    Object.keys(data.stats).forEach(name => {
+        const count = data.stats[name];
+        if (!Number.isSafeInteger(count) || count < 0) throw new Error('任务建议计数必须是非负整数');
+        stats[name] = count;
+    });
+    return { history, stats, recordStates: validateRecordStates(data.recordStates), date: typeof data.date === 'string' ? data.date : '未提供' };
+}
+
+function readRecordStates() {
+    try {
+        const raw = localStorage.getItem(RECORD_STATES_KEY);
+        return raw ? validateRecordStates(JSON.parse(raw)) : Object.create(null);
+    } catch (err) {
+        console.warn('删除状态无法读取:', err);
+        return Object.create(null);
+    }
+}
+
+function mergeRecordStates(...sources) {
+    const merged = Object.create(null);
+    sources.forEach(source => Object.keys(source || {}).forEach(id => {
+        const state = source[id], old = merged[id];
+        if (!old || state.changedAt > old.changedAt
+            || (state.changedAt === old.changedAt && state.deleted)) merged[id] = state;
+    }));
+    return merged;
+}
+
+function changeRecordState(states, id, deleted) {
+    const previous = states[String(id)];
+    states[String(id)] = { deleted, changedAt: Math.max(Date.now(), previous ? previous.changedAt + 1 : 0) };
+}
+
+function filterDeletedRecords(list, states) {
+    return list.filter(item => !(states[String(item.id)] && states[String(item.id)].deleted));
+}
+
+// 多个 localStorage 键不能组成事务：若中途失败，恢复已写入的键。
+function commitLocalData(history, stats, states) {
+    const values = { immersiveHistory: history, taskHistory: stats, [RECORD_STATES_KEY]: states };
+    const before = {}, written = [];
+    try {
+        Object.keys(values).forEach(key => { before[key] = localStorage.getItem(key); });
+        Object.keys(values).forEach(key => {
+            localStorage.setItem(key, JSON.stringify(values[key]));
+            written.push(key);
+        });
+        return true;
+    } catch (err) {
+        written.reverse().forEach(key => {
+            try {
+                if (before[key] === null) localStorage.removeItem(key);
+                else localStorage.setItem(key, before[key]);
+            } catch (rollbackError) { console.error('恢复本地数据失败:', rollbackError); }
+        });
+        console.warn('保存本地数据失败:', err);
+        return false;
+    }
+}
+
+let importPreviewData = null;
+
+function prepareImport(data, mode = 'merge', conflict = 'local') {
+    const incoming = validateBackupPayload(data);
+    const local = readHistory().map((item, i) => normalizeRecord(item, '本机第 ' + (i + 1) + ' 条记录'));
+    const localById = new Map(local.map(item => [String(item.id), item]));
+    const states = mergeRecordStates(readRecordStates(), incoming.recordStates);
+    let added = 0, duplicates = 0, conflicts = 0;
+    const rows = incoming.history.map(item => {
+        const old = localById.get(String(item.id));
+        let status;
+        if (!old) { added++; status = '新增'; }
+        else if (['task', 'startTime', 'duration', 'note', 'startedAt'].every(key => old[key] === item[key])) { duplicates++; status = '重复'; }
+        else { conflicts++; status = '冲突'; }
+        if (states[String(item.id)] && states[String(item.id)].deleted) status += ' · 已删除';
+        return { item, status };
+    });
+    const combined = mode === 'replace' ? incoming.history
+        : (conflict === 'file' ? mergeRecordLists(incoming.history, local) : mergeRecordLists(local, incoming.history));
+    const history = filterDeletedRecords(combined, states);
+    return { history, states, stats: mode === 'replace' ? incoming.stats : mergeTaskStats(getHistory(), incoming.stats),
+        rows, added, duplicates, conflicts, removed: combined.length - history.length,
+        missingDates: history.filter(item => recordStartedAt(item) === null).length, date: incoming.date };
+}
+
+function renderImportPreview() {
+    if (!importPreviewData) return;
+    const mode = document.getElementById('import-mode').value;
+    const conflict = document.getElementById('import-conflict').value;
+    const result = prepareImport(importPreviewData, mode, conflict);
+    document.getElementById('import-conflict-row').style.display = mode === 'merge' && result.conflicts ? 'block' : 'none';
+    document.getElementById('import-preview-summary').textContent =
+        '备份时间：' + result.date + '\n新增 ' + result.added + ' 条 · 重复 ' + result.duplicates + ' 条 · 冲突 ' + result.conflicts
+        + ' 条\n' + (mode === 'merge' ? '合并后' : '覆盖后') + '共 ' + result.history.length + ' 条记录'
+        + (result.removed ? ' · 跳过已删除记录 ' + result.removed + ' 条' : '')
+        + (result.missingDates ? '\n' + result.missingDates + ' 条开始日期无法识别，仍保留记录与累计时长。' : '');
+    document.getElementById('import-mode-note').textContent = mode === 'replace'
+        ? '覆盖将替换当前设备的全部记录，之前删除的记录不会恢复。'
+        : '保留本机记录，自动去除重复；同时合并删除和撤销操作。';
+    document.getElementById('import-preview-list').innerHTML = result.rows.slice(0, 30).map(({ item, status }) =>
+        '<div class="import-preview-row"><strong>' + escapeHtml(item.task) + '</strong><span>' + escapeHtml(status)
+        + '</span><small>' + escapeHtml(item.startTime) + ' · ' + escapeHtml(item.duration) + '</small></div>'
+    ).join('') + (result.rows.length > 30 ? '<div class="empty-tip">仅预览前 30 条，确认后处理全部记录。</div>' : '');
+}
+
+function openImportPreview(data) {
+    importPreviewData = validateBackupPayload(data);
+    document.getElementById('import-mode').value = 'merge';
+    document.getElementById('import-conflict').value = 'local';
+    renderImportPreview();
+    document.getElementById('import-overlay').classList.add('open');
+    document.getElementById('import-modal').classList.add('active');
+    document.getElementById('import-mode').focus();
+}
+
+function closeImportPreview() {
+    document.getElementById('import-overlay').classList.remove('open');
+    document.getElementById('import-modal').classList.remove('active');
+    importPreviewData = null;
+}
+
+function applyImportPreview() {
+    if (!importPreviewData) return false;
+    const mode = document.getElementById('import-mode').value;
+    if (mode === 'replace' && !confirm('覆盖将替换当前设备的全部记录，确定继续吗？')) return false;
+    try {
+        // 用户在预览期间可能操作过历史，确认时重新计算，不写入过期快照。
+        const result = prepareImport(importPreviewData, mode, document.getElementById('import-conflict').value);
+        if (!commitLocalData(result.history, result.stats, result.states)) {
+            alert('导入未完成：本地存储不可用或空间不足，请先导出备份。');
+            return false;
+        }
+        editingHistoryIndex = null;
+        closeImportPreview();
+        renderHistoryList(readHistory());
+        autoWriteBackup();
+        alert('已导入，当前共 ' + result.history.length + ' 条记录。');
+        return true;
+    } catch (err) {
+        alert('导入未完成：' + err.message);
+        return false;
+    }
+}
 
 // 1. 导出备份 (JSON 格式，包含所有数据)
 function exportBackup() {
@@ -3940,12 +4271,13 @@ function exportBackup() {
 }
 
 // 导出/备份共用的数据格式（导入备份也认这个格式）
-function buildBackupPayload(history, stats) {
+function buildBackupPayload(history, stats, states) {
     return {
         version: APP_VERSION,
         date: new Date().toLocaleString(),
         history: Array.isArray(history) ? history : [],
-        stats: (stats && typeof stats === 'object' && !Array.isArray(stats)) ? stats : {}
+        stats: (stats && typeof stats === 'object' && !Array.isArray(stats)) ? stats : {},
+        recordStates: states === undefined ? readRecordStates() : states
     };
 }
 
@@ -3958,40 +4290,14 @@ function triggerImport() {
 function importBackup(inputElement) {
     const file = inputElement.files[0];
     if (!file) return;
-
     const reader = new FileReader();
-    reader.onload = function(e) {
-        try {
-            const data = JSON.parse(e.target.result);
-            
-            // 格式校验：字段缺失或类型不对都拦下来，避免把本地数据写坏
-            if (!data || !Array.isArray(data.history) || typeof data.stats !== 'object' || data.stats === null) {
-                alert("文件格式错误：这不是 Timing 的备份文件（或文件已损坏）。");
-                return;
-            }
-
-            if (confirm(`检测到备份文件：\n备份时间：${data.date}\n包含 ${data.history.length} 条记录\n\n【注意】导入将覆盖当前设备的所有记录！\n确定要覆盖吗？`)) {
-                
-                // 覆盖本地数据
-                localStorage.setItem('immersiveHistory', JSON.stringify(data.history));
-                localStorage.setItem('taskHistory', JSON.stringify(data.stats));
-                
-                alert("✅ 数据恢复成功！");
-                
-                // 刷新界面
-                location.reload();
-            }
-        } catch (err) {
-            console.error(err);
-            alert("导入失败：文件损坏或格式不正确。");
-        }
+    reader.onload = (e) => {
+        try { openImportPreview(JSON.parse(e.target.result)); }
+        catch (err) { alert('导入未开始：' + err.message + '。当前记录未改变。'); }
     };
-    
-    // 读取文件文字
+    reader.onerror = () => alert('无法读取备份文件，当前记录未改变。');
     reader.readAsText(file);
-    
-    // 清空 input，防止同名文件无法再次触发
-    inputElement.value = ''; 
+    inputElement.value = '';
 }
 
 // ================= 固定位置的备份文件（File System Access API） =================
@@ -4073,7 +4379,7 @@ function mergeRecordLists(localList, fileList) {
 
 // 任务建议的计数取两边较大的那个（同一个任务在两台设备上各用过几次）
 function mergeTaskStats(localStats, fileStats) {
-    const out = {};
+    const out = Object.create(null);
     [localStats, fileStats].forEach((src) => {
         if (!src || typeof src !== 'object' || Array.isArray(src)) return;
         Object.keys(src).forEach((key) => {
@@ -4085,66 +4391,76 @@ function mergeTaskStats(localStats, fileStats) {
 }
 
 // --- 权限：选过之后浏览器可能要求重新授权，必须发生在用户点击里 ---
-async function ensureBackupPermission(request) {
-    if (!backupFileHandle) return false;
+async function ensureBackupPermission(request, handle = backupFileHandle) {
+    if (!handle) return false;
     const opts = { mode: 'readwrite' };
     try {
-        if (typeof backupFileHandle.queryPermission === 'function') {
-            if (await backupFileHandle.queryPermission(opts) === 'granted') return true;
-        }
-        if (!request || typeof backupFileHandle.requestPermission !== 'function') return false;
-        return (await backupFileHandle.requestPermission(opts)) === 'granted';
-    } catch (err) {
-        return false;
-    }
+        if (typeof handle.queryPermission === 'function' && await handle.queryPermission(opts) === 'granted') return true;
+        if (!request || typeof handle.requestPermission !== 'function') return false;
+        return await handle.requestPermission(opts) === 'granted';
+    } catch (err) { return false; }
 }
 
-// 把当前数据"覆盖合并"进备份文件。
-//   options.requestPermission：true 表示这次是用户点击触发的，可以弹授权
-//   options.removedIds：这次被删掉的记录 id，合并时从文件里也去掉（避免下次又被合并回来）
-async function writeBackupFile(options) {
+// 授权在点击时立即发起，写入按队列执行，队列任务读取最新数据。
+let backupWriteQueue = Promise.resolve();
+
+function writeBackupFile(options) {
     const opts = options || {};
-    if (!backupFileHandle) {
-        refreshBackupStatus();
-        return false;
-    }
-    if (!(await ensureBackupPermission(!!opts.requestPermission))) {
-        refreshBackupStatus('需要授权：点一下「立即写入一次」授权');
-        return false;
-    }
-    try {
-        // 先读旧文件（不存在 / 空 / 坏 JSON 都当作"没有"，直接重建）
-        let existing = null;
-        try {
-            const text = await (await backupFileHandle.getFile()).text();
-            if (text && text.trim()) existing = JSON.parse(text);
-        } catch (err) {
-            existing = null;
+    const handle = backupFileHandle;
+    if (!handle) { refreshBackupStatus(); return Promise.resolve(false); }
+    const permission = ensureBackupPermission(!!opts.requestPermission, handle);
+    const queued = backupWriteQueue.catch(() => {}).then(async () => {
+        if (handle !== backupFileHandle) return false; // 已断开或更换文件，取消旧任务
+        if (!(await permission)) {
+            refreshBackupStatus('需要授权：点一下「立即写入一次」授权');
+            return false;
         }
+        const write = () => writeBackupFileNow(handle, opts);
+        return navigator.locks && typeof navigator.locks.request === 'function'
+            ? navigator.locks.request('restoretimingtimer-backup-write', write) : write();
+    }).catch((err) => {
+        console.warn('备份队列未完成:', err);
+        refreshBackupStatus('备份未完成：' + (err && err.message ? err.message : err));
+        return false;
+    });
+    backupWriteQueue = queued;
+    return queued;
+}
 
-        const removed = (opts.removedIds || []).map(String);
-        const merged = mergeRecordLists(readHistory(), existing && existing.history)
-            .filter((item) => removed.indexOf(String(item.id)) < 0);
-        const payload = buildBackupPayload(merged, mergeTaskStats(getHistory(), existing && existing.stats));
+async function writeBackupFileNow(handle, opts) {
+    if (handle !== backupFileHandle) return false;
+    try {
+        // 空文件可以初始化；读取、解析、字段校验失败都保留原文件。
+        const text = await (await handle.getFile()).text();
+        const existing = text.trim() ? validateBackupPayload(JSON.parse(text))
+            : { history: [], stats: {}, recordStates: {} };
+        const local = validateBackupPayload(buildBackupPayload(readHistory(), getHistory(), readRecordStates()));
+        const states = mergeRecordStates(local.recordStates, existing.recordStates);
+        const merged = filterDeletedRecords(mergeRecordLists(local.history, existing.history), states);
+        const payload = buildBackupPayload(merged, mergeTaskStats(local.stats, existing.stats), states);
+        if (handle !== backupFileHandle) return false;
 
-        const writable = await backupFileHandle.createWritable();
-        await writable.write(JSON.stringify(payload, null, 2));
-        await writable.close();
-
+        const writable = await handle.createWritable();
+        try {
+            await writable.write(JSON.stringify(payload, null, 2));
+            await writable.close();
+        } catch (err) {
+            if (typeof writable.abort === 'function') await writable.abort().catch(() => {});
+            throw err;
+        }
         backupLastWrite = { at: Date.now(), count: merged.length };
         refreshBackupStatus(opts.silent ? null : '已写入 ' + merged.length + ' 条');
         return true;
     } catch (err) {
-        console.warn('写入备份文件失败:', err);
-        refreshBackupStatus('写入失败：' + (err && err.message ? err.message : err));
+        console.warn('备份未完成，未主动覆盖旧文件:', err);
+        refreshBackupStatus('备份未完成，原文件保留：' + (err && err.message ? err.message : err));
         return false;
     }
 }
 
-// 保存记录 / 改名 / 删除之后顺手写一次（不弹授权：这时不一定还在用户手势里）
-function autoWriteBackup(removedIds) {
+function autoWriteBackup() {
     if (!prefs.autoBackup || !backupFileHandle) return;
-    writeBackupFile({ removedIds: removedIds || [], silent: false });
+    writeBackupFile({ silent: false });
 }
 
 // 让用户选（或换）备份文件；选完立刻写一次，顺便把授权要下来
@@ -4197,6 +4513,17 @@ function refreshBackupStatus(note) {
     if (note) text += ' · ' + note;
     el.textContent = text;
 }
+
+        document.getElementById('import-modal').addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') { event.stopPropagation(); closeImportPreview(); }
+            if (event.key === 'Tab') {
+                const controls = Array.from(document.getElementById('import-modal').querySelectorAll('button, select'))
+                    .filter(el => el.offsetParent !== null && !el.disabled);
+                const first = controls[0], last = controls[controls.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            }
+        });
 
         // ================= 性能优化：按需预热 =================
         // 说明：原来的 preloadAllImages() 会在页面加载时把 24 张原图全部 fetch 成
@@ -4255,7 +4582,7 @@ function refreshBackupStatus(note) {
 
         // 计时页正上方被弹窗盖住时不显示（总结弹窗 / 历史 / 设置 / 时长选择器）
         function isAnyModalOpen() {
-            const ids = ['picker-modal', 'summary-modal', 'history-modal', 'settings-modal'];
+            const ids = ['picker-modal', 'summary-modal', 'history-modal', 'settings-modal', 'import-modal'];
             for (let i = 0; i < ids.length; i++) {
                 const el = document.getElementById(ids[i]);
                 if (el && (el.classList.contains('open') || el.classList.contains('active'))) return true;
