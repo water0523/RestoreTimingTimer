@@ -310,6 +310,7 @@
             align-items: center;
             color: white;
             background: #000; /* 默认黑底，防止图片加载前的白屏 */
+            overflow: hidden; /* 裁掉等比放大后超出屏幕的部分 */
         }
 
         /* 找到 .bg-layer，替换为以下代码 */
@@ -324,8 +325,9 @@
             top: 0; left: 0;
             width: 100%; height: 100%;
             
-            /* 关键点1：图片放大到 120%，这样左右才有空间移动 */
-            background-size: 120% 120%; 
+            /* 关闭等比填充时保留原来的显示方式 */
+            background-size: 120% 120%;
+            background-repeat: no-repeat;
             background-position: 50% 50%;   /* 初始值；实际位置由 JS 按"已用时长"每帧算（见 syncBackgroundPan） */
             z-index: 0;
 
@@ -343,6 +345,19 @@
 
         .bg-layer.visible {
             opacity: 0.8;
+        }
+
+        /* 保持图片比例并铺满屏幕；统一放大为平移留空间，避免露出边缘。
+           容器随窗口、旋转与网页缩放即时适配；只移动合成层，避免逐帧重绘背景。 */
+        #timer-screen.background-cover .bg-layer {
+            background-size: cover;
+            background-position: 50% 50%;
+            transform-origin: 50% 50%;
+            transform: translate3d(0, 0, 0) scale(1.2);
+        }
+
+        #timer-screen.active.background-cover .bg-layer {
+            will-change: transform, opacity;
         }
 
         /* 【删除】原来那个 moveBg 关键帧（20 秒线性往返平移）已经不用了：
@@ -1430,6 +1445,14 @@
     <div class="settings-section-title">通用</div>
 
     <div class="settings-field">
+        <label class="settings-toggle-row" for="pref-backgroundCover">
+            <input type="checkbox" id="pref-backgroundCover" onchange="onPrefToggle('backgroundCover', this.checked)" />
+            <span class="settings-toggle-text">背景等比填充全屏</span>
+        </label>
+        <div class="help-text">保持图片比例，随屏幕大小与网页缩放铺满背景，边缘可能被裁掉。关闭后恢复原来的拉伸显示方式。</div>
+    </div>
+
+    <div class="settings-field">
         <label class="settings-toggle-row" for="pref-keepAwake">
             <input type="checkbox" id="pref-keepAwake" onchange="onPrefToggle('keepAwake', this.checked)" />
             <span class="settings-toggle-text" id="pref-keepAwake-text">保持屏幕常亮</span>
@@ -1600,7 +1623,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.5.0';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.5.1';   // 版本号（改动记录见 README.md）
 
         // ================= 偏好设置（设置弹窗里的开关） =================
         // 所有"可以自己选"的功能都收敛到这里，**默认全部打开**。
@@ -1608,6 +1631,7 @@ const resources = [
         // 弹窗里加一行 onchange="onPrefToggle('键名', this.checked)" 即可。
         const PREF_KEY = 'timing_prefs';
         const PREF_DEFAULTS = {
+            backgroundCover: true,  // 背景等比填充全屏
             keepAwake:      true,   // 保持屏幕常亮
             wallClock:      true,   // 顶部毛玻璃当前时间
             titleTimer:     true,   // 标签页标题显示剩余时间
@@ -1660,6 +1684,9 @@ const resources = [
         // 关掉某个开关时，把"已经生效的痕迹"立刻收掉；重新打开时再补回来
         function applyPrefChange(key) {
             switch (key) {
+                case 'backgroundCover':
+                    applyBackgroundFit();
+                    break;
                 case 'keepAwake':
                     if (prefs.keepAwake) applyWakeLock(); else releaseWakeLock();
                     break;
@@ -3963,13 +3990,32 @@ function backgroundPanPercent(totalMs) {
 }
 
 function syncBackgroundPan(totalMs) {
-    const pos = backgroundPanPercent(totalMs).toFixed(2) + '% 50%';
+    const pan = backgroundPanPercent(totalMs);
+    // 等比模式的层宽与屏幕一致，放大 1.2 倍后两侧各多出 10%。
+    // 平移限制在 ±9%，再保留 1% 的安全边距，避免高像素密度和缩放时的细暗边。
+    // 100% 相位仍从图片右侧开始。
+    const pos = prefs.backgroundCover
+        ? `translate3d(${((50 - pan) * 0.18).toFixed(4)}%, 0, 0) scale(1.2)`
+        : pan.toFixed(2) + '% 50%';
     if (pos === lastPanPos) return;
     lastPanPos = pos;
     // 两层都要设：交叉淡化的时候两张图必须同步移动，否则淡入的那张会"跳"一下
     for (let i = 0; i < bgLayerEls.length; i++) {
-        if (bgLayerEls[i]) bgLayerEls[i].style.backgroundPosition = pos;
+        if (!bgLayerEls[i]) continue;
+        if (prefs.backgroundCover) bgLayerEls[i].style.transform = pos;
+        else bgLayerEls[i].style.backgroundPosition = pos;
     }
+}
+
+function applyBackgroundFit() {
+    timerScreen.classList.toggle('background-cover', prefs.backgroundCover);
+    bgLayerEls.forEach((layer) => {
+        if (!layer) return;
+        layer.style.transform = '';
+        layer.style.backgroundPosition = '50% 50%';
+    });
+    lastPanPos = '';
+    syncBackgroundPan(currentElapsedMs());
 }
 
 // ================= 三连击/三连点全屏逻辑 (PC & 手机通用) =================
@@ -4718,6 +4764,7 @@ function refreshBackupStatus(note) {
             }
             refreshBackupStatus();   // 备份文件那一行状态
         }
+        applyBackgroundFit();
         syncSettingsUI();
 
         // 打开页面后把上次选好的备份文件句柄取回来（拿不到就等用户重新选）
