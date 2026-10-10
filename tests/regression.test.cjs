@@ -8,8 +8,8 @@ const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
-function app() {
-    const storage = new Map();
+function app(initialStorage = {}) {
+    const storage = new Map(Object.entries(initialStorage).map(([key, value]) => [key, typeof value === 'string' ? value : JSON.stringify(value)]));
     const elements = new Map();
     const timers = new Map();
     const alerts = [];
@@ -469,6 +469,148 @@ test('后台结束兜底也会对齐最后阶段，停止计时并显示 12 小�
     assert.equal(a.run('resources[currentResIndex].title'), '宇宙毁灭');
     assert.equal(a.elements.get('summary-duration').innerText, '12:00:00');
     assert.equal(a.elements.get('summary-modal').classList.contains('active'), true);
+});
+
+test('默认 36 阶段，原版保留全部 24 阶段的顺序与原图', () => {
+    const a = app();
+    assert.equal(a.run('prefs.stageMode'), 'extended');
+    assert.equal(a.run('resources.length'), 36);
+    a.run('onStageModeChange("classic")');
+    const stages = JSON.parse(a.run('JSON.stringify(resources)'));
+    assert.deepEqual(stages.map(s => s.title), ['大爆炸', '太阳系', '地球形成', '太古代', '震旦纪', '寒武纪', '奥陶纪', '泥盆纪', '石炭纪', '三叠纪', '侏罗纪', '白垩纪', '古代', '部落', '村庄', '人群', '近代', '现代', '城市', '未来城市', '核爆炸', '地球毁灭', '太阳毁灭', '宇宙毁灭']);
+    assert.deepEqual(stages.map(s => s.img), Array.from({ length: 24 }, (_, i) => `./images/${i + 1}.webp`));
+    assert.equal(a.run('getMaxDurationMinutes()'), 480);
+    a.run('onStageModeChange("extended")');
+    assert.equal(a.run('resources.length'), 36);
+    assert.equal(a.run('getMaxDurationMinutes()'), 720);
+});
+
+test('模式选择刷新后保留，旧偏好与无效模式默认 36 阶段', () => {
+    const first = app();
+    first.run('onStageModeChange("classic")');
+    const second = app(Object.fromEntries(first.storage));
+    assert.equal(second.run('resources.length'), 24);
+    assert.equal(second.elements.get('pref-stageMode').value, 'classic');
+    for (const stageMode of [undefined, 'unknown', true, '__proto__']) {
+        const a = app({ timing_prefs: { stageMode, backgroundCover: false } });
+        assert.equal(a.run('prefs.stageMode'), 'extended');
+        assert.equal(a.run('resources.length'), 36);
+        assert.equal(a.run('prefs.backgroundCover'), false);
+        a.run('onStageModeChange("invalid")');
+        assert.equal(a.run('resources.length'), 36);
+    }
+});
+
+test('原版时长和小时滚轮限于 8 小时，切回后可选 12 小时', () => {
+    const a = app();
+    a.run('applyDurationDisplay(720); onStageModeChange("classic")');
+    assert.equal(a.run('totalDurationMinutes'), 480);
+    assert.match(a.elements.get('hour-content').innerHTML, /data-v="8"/);
+    assert.doesNotMatch(a.elements.get('hour-content').innerHTML, /data-v="9"/);
+    a.run('applyDurationDisplay(719)');
+    assert.equal(a.run('totalDurationMinutes'), 480);
+    assert.match(a.elements.get('preload-all-help').textContent, /24 张/);
+    a.run('onStageModeChange("extended")');
+    assert.match(a.elements.get('hour-content').innerHTML, /data-v="12"/);
+    a.run('applyDurationDisplay(719)');
+    assert.equal(a.run('totalDurationMinutes'), 719);
+});
+
+test('原版开发者时间轴覆盖 8 小时，完成时仍在宇宙毁灭', () => {
+    const a = app();
+    a.run('onStageModeChange("classic"); activateDevMode()');
+    assert.equal(a.run('totalDurationMinutes'), 480);
+    assert.equal(Number(a.elements.get('dev-slider').max), 28800);
+    a.run('syncResourceToCycle(getCycleIndex(28800000)); updateTimerUI(28800000)');
+    assert.equal(a.run('resources[currentResIndex].title'), '宇宙毁灭');
+    assert.equal(a.elements.get('timer-display').innerText, '08:00:00');
+});
+
+test('运行或暂停中切换只影响下一次专注，不截断本次目标与进度', () => {
+    for (const running of [true, false]) {
+        const a = app();
+        a.context.running = running;
+        a.run('totalDurationMinutes = 720; elapsedMs = 9 * 3600000; startTime = 1000; sessionActive = true; isRunning = running; currentResIndex = 27; onStageModeChange("classic")');
+        assert.equal(a.run('resources.length'), 36);
+        assert.equal(a.run('totalDurationMinutes'), 720);
+        assert.equal(a.run('elapsedMs'), 9 * 3600000);
+        assert.equal(a.run('collectSessionState(true).stageMode'), 'extended');
+        assert.equal(a.get('timing_prefs').stageMode, 'classic');
+        assert.match(a.elements.get('stage-mode-help').textContent, /下一次/);
+        a.run('stopTimer()');
+        assert.equal(a.run('resources.length'), 24);
+        a.run('startFocus()');
+        assert.equal(a.run('totalDurationMinutes'), 480);
+        assert.equal(a.run('collectSessionState(true).stageMode'), 'classic');
+    }
+});
+
+test('12 小时会话在原版偏好下仍恢复为 36 阶段，结束后采用原版', () => {
+    const startTime = new Date(2026, 9, 5, 21).getTime();
+    const a = app({ timing_prefs: { stageMode: 'classic' }, timing_suspendedSession: { task: '长时会话', totalMinutes: 720, elapsedMs: 9 * 3600000, startTime, stageMode: 'extended', imageOffset: 0, savedAt: Date.now() } });
+    a.run('resumeSuspended()');
+    assert.equal(a.run('resources.length'), 36);
+    assert.equal(a.run('totalDurationMinutes'), 720);
+    assert.equal(a.run('elapsedMs'), 9 * 3600000);
+    assert.equal(a.run('sessionStartTimeObj.getTime()'), startTime);
+    assert.equal(a.run('prefs.stageMode'), 'classic');
+    assert.equal(a.elements.get('pref-stageMode').value, 'classic');
+    a.run('stopTimer()');
+    assert.equal(a.run('resources.length'), 24);
+});
+
+test('原版快照在默认偏好下沿用 24 阶段和手动切图偏移', () => {
+    const a = app({ timing_runningSession: { task: '原版会话', totalMinutes: 480, elapsedMs: 7 * 3600000, startTime: Date.now(), stageMode: 'classic', imageOffset: 1, savedAt: Date.now() } });
+    a.run('resumeSuspended()');
+    assert.equal(a.run('resources.length'), 24);
+    assert.equal(a.run('resources[currentResIndex].title'), '太阳毁灭');
+    assert.equal(a.run('collectSessionState(true).stageMode'), 'classic');
+    assert.equal(a.run('prefs.stageMode'), 'extended');
+});
+
+test('旧无模式标识的短会话保持原有 36 阶段恢复行为', () => {
+    const a = app({ timing_prefs: { stageMode: 'classic' }, timing_suspendedSession: { task: '旧会话', totalMinutes: 25, elapsedMs: 1200000, startTime: Date.now(), imageOffset: 0, savedAt: Date.now() } });
+    a.run('resumeSuspended()');
+    assert.equal(a.run('resources.length'), 36);
+    assert.equal(a.run('resources[currentResIndex].title'), '大爆炸');
+    assert.equal(a.run('totalDurationMinutes'), 25);
+});
+
+test('切换模式按图片路径复用缓存，下标相同的不同图片不会串图', () => {
+    const a = app();
+    const singularity = a.run('ensureImage(0)');
+    const bigbang = a.run('ensureImage(1)');
+    a.run('onStageModeChange("classic")');
+    assert.equal(a.run('ensureImage(0)'), bigbang);
+    assert.notEqual(a.run('ensureImage(0)'), singularity);
+    assert.equal(a.run('ensureImage(0).src'), './images/1.webp');
+});
+
+test('切换后旧图片解码回调失效，新的图片与阶段名保持一致', async () => {
+    const a = app();
+    const gates = [];
+    a.context.Image = class { constructor() { this.complete = true; this.naturalWidth = 100; } addEventListener() {} decode() { return new Promise(resolve => gates.push(resolve)); } };
+    a.run('prefs.preloadAll = false; updateResource(0, true, true); onStageModeChange("classic"); updateResource(0, true, true)');
+    assert.equal(gates.length, 2);
+    gates[0]();
+    await Promise.resolve();
+    assert.notEqual(a.elements.get('timer-task-name').innerText, '奇点');
+    gates[1]();
+    await Promise.resolve();
+    assert.equal(a.elements.get('timer-task-name').innerText, '大爆炸');
+    assert.match(a.run('bgLayer.style.backgroundImage'), /images\/1\.webp/);
+});
+
+test('图片失败重试捕获原路径，模式切换后不会使用旧下标查新数组', () => {
+    const a = app();
+    let retry;
+    a.context.setTimeout = (callback, ms) => { if (ms === 1500) retry = callback; return 100; };
+    const old = a.run('ensureImage(35)');
+    old.onerror();
+    a.run('prefs.preloadAll = false; onStageModeChange("classic")');
+    assert.equal(typeof retry, 'function');
+    assert.doesNotThrow(() => retry());
+    assert.equal(old.src, './images/24.webp');
 });
 
 module.exports = { app, record, attachBackup };

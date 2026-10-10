@@ -899,7 +899,7 @@
     margin-bottom: 5px;
     font-weight: 500;
 }
-.settings-field input {
+.settings-field input, .settings-field select {
     width: 100%;
     padding: 10px 12px;
     font-size: 14px;
@@ -909,7 +909,7 @@
     background: #f9f9f9;
     transition: border-color 0.2s, background 0.2s;
 }
-.settings-field input:focus {
+.settings-field input:focus, .settings-field select:focus {
     border-color: #2196F3;
     background: #fff;
 }
@@ -1436,13 +1436,22 @@
     </div>
 
     <div class="modal-info" style="font-size: 13px; color: #888; margin-bottom: 18px;">
-        下面这些都可以自己选，改动立刻生效并存在这台设备上，默认全部打开。
+        设置会保存在这台设备。阶段模式默认使用 36 阶段，其余开关默认开启。
     </div>
 
     <div class="settings-field">
         <a class="btn-mini appreciation-link" href="https://mp.weixin.qq.com/s/4gqoo0NMCwGUwEPzBJJqTQ" target="_blank" rel="noopener noreferrer">全文案赏析 ↗</a>
     </div>
     <div class="settings-section-title">通用</div>
+
+    <div class="settings-field">
+        <label for="pref-stageMode">阶段模式</label>
+        <select id="pref-stageMode" onchange="onStageModeChange(this.value)" aria-describedby="stage-mode-help">
+            <option value="extended" selected>36 阶段 · 12 小时（默认）</option>
+            <option value="classic">原版 24 阶段 · 8 小时</option>
+        </select>
+        <div class="help-text" id="stage-mode-help">每个阶段仍为 20 分钟，选择会在本设备保存。计时中切换从下一次专注开始生效。</div>
+    </div>
 
     <div class="settings-field">
         <label class="settings-toggle-row" for="pref-backgroundCover">
@@ -1549,7 +1558,7 @@
             <input type="checkbox" id="pref-preloadAll" onchange="onPrefToggle('preloadAll', this.checked)" />
             <span class="settings-toggle-text">空闲时预加载全部背景图</span>
         </label>
-        <div class="help-text">停在主页没事做的时候，把 36 张背景图（约 16.9MB）慢慢缓存到本地。关掉可以省流量。</div>
+        <div class="help-text" id="preload-all-help">停在主页没事做的时候，把 36 张背景图（约 16.9MB）慢慢缓存到本地。关掉可以省流量。</div>
     </div>
 
     <div class="settings-section-title" style="margin-top: 18px;">数据备份</div>
@@ -1581,12 +1590,12 @@
         <button class="btn-confirm-flat" style="flex: 1;" onclick="closeSettingsModal()">完成</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.6.0</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.6.1</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
 // ================= 配置数据 (本地图片版) =================
-const resources = [
+const ALL_RESOURCES = [
             // --- 第 1 组：宇宙与地球起源 ---
             { img: './images/25.webp', title: '奇点', quote: '一切尚未发生，寂静里藏着所有可能。' },
             { img: './images/1.webp', title: '大爆炸', quote: '宇宙由这一刻诞生，你的征程也由此开始。' },
@@ -1629,17 +1638,27 @@ const resources = [
             { img: './images/24.webp', title: '宇宙毁灭', quote: '宇宙归于沉寂，你的征程也走完了，去好好休息吧。' }
         ];
 
+        const STAGE_MODES = {
+            extended: ALL_RESOURCES,
+            classic: Array.from({ length: 24 }, (_, i) => ALL_RESOURCES.find(item => item.img === `./images/${i + 1}.webp`))
+        };
+
+        function isStageMode(mode) {
+            return mode === 'extended' || mode === 'classic';
+        }
+
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.6.0';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.6.1';   // 版本号（改动记录见 README.md）
 
         // ================= 偏好设置（设置弹窗里的开关） =================
-        // 所有"可以自己选"的功能都收敛到这里，**默认全部打开**。
+        // 布尔开关默认打开，阶段模式默认使用 36 阶段。
         // 存储是一条 JSON（timing_prefs）；以后加开关只要往 PREF_DEFAULTS 里加一项，
         // 弹窗里加一行 onchange="onPrefToggle('键名', this.checked)" 即可。
         const PREF_KEY = 'timing_prefs';
         const PREF_DEFAULTS = {
+            stageMode: 'extended', // 默认 36 阶段，classic 为原版 24 阶段
             backgroundCover: true,  // 背景等比填充全屏
             keepAwake:      true,   // 保持屏幕常亮
             wallClock:      true,   // 顶部毛玻璃当前时间
@@ -1655,6 +1674,8 @@ const resources = [
             autoBackup:     true    // 每次保存记录时写入固定位置的备份文件
         };
         let prefs = readPrefs();
+        let activeStageMode = prefs.stageMode;   // 会话模式与下一次专注的偏好分开
+        let resources = STAGE_MODES[activeStageMode];
 
         function readPrefs() {
             const result = Object.assign({}, PREF_DEFAULTS);
@@ -1664,7 +1685,9 @@ const resources = [
                     const saved = JSON.parse(raw);
                     if (saved && typeof saved === 'object' && !Array.isArray(saved)) {
                         Object.keys(PREF_DEFAULTS).forEach((key) => {
-                            if (typeof saved[key] === 'boolean') result[key] = saved[key];
+                            if (key === 'stageMode') {
+                                if (isStageMode(saved[key])) result[key] = saved[key];
+                            } else if (typeof saved[key] === 'boolean') result[key] = saved[key];
                         });
                     }
                 } else {
@@ -1684,10 +1707,49 @@ const resources = [
 
         // 设置弹窗里每个开关都走这里
         function onPrefToggle(key, checked) {
-            if (!(key in PREF_DEFAULTS)) return;
+            if (typeof PREF_DEFAULTS[key] !== 'boolean') return;
             prefs[key] = !!checked;
             savePrefs();
             applyPrefChange(key);
+        }
+
+        function onStageModeChange(mode) {
+            if (!isStageMode(mode)) { syncStageModeUI(); return; }
+            prefs.stageMode = mode;
+            savePrefs();
+            if (!sessionActive) {
+                applyStageMode(mode);
+                preloadAllImagesInBackground();
+            }
+            syncStageModeUI();
+        }
+
+        function applyStageMode(mode) {
+            if (!isStageMode(mode)) mode = 'extended';
+            if (mode !== activeStageMode) {
+                stopAllPreload();
+                clearPrefetchTimer();
+                if (stageApplyTimer) { clearTimeout(stageApplyTimer); stageApplyTimer = null; }
+                resourceApplyToken += 1;   // 旧模式的解码或切图回调不能覆盖新模式
+                activeStageMode = mode;
+                resources = STAGE_MODES[mode];
+                renderHourPicker();
+                const maximum = getMaxDurationMinutes();
+                if (totalDurationMinutes > maximum) applyDurationDisplay(maximum, undefined, false);
+                devSlider.max = maximum * 60;
+            }
+            syncStageModeUI();
+        }
+
+        function syncStageModeUI() {
+            const select = document.getElementById('pref-stageMode');
+            if (select) select.value = prefs.stageMode;
+            const help = document.getElementById('stage-mode-help');
+            if (help) help.textContent = sessionActive && activeStageMode !== prefs.stageMode
+                ? `本次专注仍使用 ${resources.length} 阶段；新模式将从下一次专注开始生效。`
+                : '每个阶段仍为 20 分钟，选择会在本设备保存。计时中切换从下一次专注开始生效。';
+            const preloadHelp = document.getElementById('preload-all-help');
+            if (preloadHelp) preloadHelp.textContent = `停在主页没事做的时候，把 ${resources.length} 张背景图（约 ${activeStageMode === 'classic' ? '7.4' : '16.9'}MB）慢慢缓存到本地。关掉可以省流量。`;
         }
 
         // 关掉某个开关时，把"已经生效的痕迹"立刻收掉；重新打开时再补回来
@@ -1849,12 +1911,17 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
             });
         }
 
-        function initPicker() {
-            // 小时上限随完整阶段总时长变化（36 × 20 分钟 = 12 小时）
+        function renderHourPicker() {
+            // 单独更新小时选项，切换模式时不重复绑定滚动或拖动事件。
             let hHtml = '<div class="picker-placeholder"></div>';
-            for(let i=0; i<=MAX_DURATION_MINUTES / 60; i++) hHtml += `<div class="picker-item" data-v="${i}">${i}</div>`;
+            for(let i=0; i<=getMaxDurationMinutes() / 60; i++) hHtml += `<div class="picker-item" data-v="${i}">${i}</div>`;
             hHtml += '<div class="picker-placeholder"></div>';
             document.getElementById('hour-content').innerHTML = hHtml;
+            colHour.scrollTop = Math.min(colHour.scrollTop, getMaxDurationMinutes() / 60 * itemHeight);
+        }
+
+        function initPicker() {
+            renderHourPicker();
 
             // 生成分钟 (0-59)
             let mHtml = '<div class="picker-placeholder"></div>';
@@ -1922,7 +1989,9 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         }
 
         // ================= 记住上次设置（任务名 / 时长） =================
-        const MAX_DURATION_MINUTES = resources.length * CYCLE_MS / 60000;   // 完整时间轴：12 小时
+        function getMaxDurationMinutes() {
+            return resources.length * CYCLE_MS / 60000;   // 原版 8 小时，扩展版 12 小时
+        }
 
         function persistLastSetup() {
             // 调试状态不参与记忆，避免开发者时间轴覆盖正常任务的时长。
@@ -1964,9 +2033,9 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         }
 
         // 把时长同步到设置页的显示（数值 + 单位 + 下划线 + 提示语颜色）
-        function applyDurationDisplay(minutes, hintText) {
+        function applyDurationDisplay(minutes, hintText, remember = true) {
             // 统一限制到完整时间轴时长，兼容旧的本地设置与暂存。
-            const mins = Math.min(Math.max(1, Math.round(minutes)), MAX_DURATION_MINUTES);
+            const mins = Math.min(Math.max(1, Math.round(minutes)), getMaxDurationMinutes());
             totalDurationMinutes = mins;
 
             const displayVal = (mins / 60).toFixed(1);
@@ -1987,7 +2056,7 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
                 calculateEndTime(mins);       // 计算并显示结束时间
             }
 
-            persistLastSetup();
+            if (remember) persistLastSetup();
         }
 
         // 替换整个 confirmPicker 函数
@@ -2015,6 +2084,7 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
 
 // 1. 开始专注
 function startFocus() {
+    if (!sessionActive) applyStageMode(prefs.stageMode);
     // 1. 必须先设置时长（原来默认 60 分钟，界面上却显示"未设置"）
     if (!totalDurationMinutes || totalDurationMinutes <= 0) {
         alert('请先设置学习时长');
@@ -2333,6 +2403,7 @@ function stopTimer() {
     stopSessionSnapshot();
     stopTitleFlash();
     timerScreen.classList.remove('paused');
+    applyStageMode(prefs.stageMode);
     
     // 回到主页=空闲：这时候才把全部背景图慢慢预热（不打扰任何计时）
     preloadAllImagesInBackground();
@@ -2441,7 +2512,7 @@ function stopTimer() {
 
 // 替换 updateResource 函数
 // 图片策略：
-//   1) 页面加载后把 36 张 WebP（合计约 16.9MB）全部拉进浏览器 HTTP 缓存 —— 切图不再等下载；
+//   1) 空闲时把当前模式的背景图拉进浏览器 HTTP 缓存，切图不再等下载；
 //   2) 但只把"正在用的邻近几张"作为 Image 对象长期持有（IMG_CACHE_MAX），
 //      因为全部 2560px 解码位图约几百 MB，全留着会吃内存；
 //      预加载用临时 Image 对象，塞进缓存后即可被回收，切换时从磁盘缓存秒读。
@@ -2458,34 +2529,35 @@ let resourceApplyToken = 0;
 const STAGE_SWITCH_MS = 400;
 
 function ensureImage(index) {
-    if (imgCache[index]) {
+    const url = resources[index].img;
+    if (imgCache[url]) {
         // 命中就把它挪到队尾（近似 LRU），保证正在用的那张不会被挤掉
-        const pos = imgCacheOrder.indexOf(index);
+        const pos = imgCacheOrder.indexOf(url);
         if (pos >= 0) {
             imgCacheOrder.splice(pos, 1);
-            imgCacheOrder.push(index);
+            imgCacheOrder.push(url);
         }
-        return imgCache[index];
+        return imgCache[url];
     }
     const img = new Image();
     let retried = false;
     img.onerror = () => {
         // 【加固】偶发的网络抖动不该让某张背景永久加载不出来：失败后重试一次
         if (retried) {
-            console.warn('背景图加载失败（已重试）:', resources[index].img);
+            console.warn('背景图加载失败（已重试）:', url);
             return;
         }
         retried = true;
-        console.warn('背景图加载失败，稍后重试:', resources[index].img);
-        setTimeout(() => { img.src = resources[index].img; }, IMG_RETRY_DELAY_MS);
+        console.warn('背景图加载失败，稍后重试:', url);
+        setTimeout(() => { img.src = url; }, IMG_RETRY_DELAY_MS);
     };
-    img.src = resources[index].img;   // 交给浏览器 HTTP 缓存，之后切换直接命中
-    imgCache[index] = img;
-    imgCacheOrder.push(index);
+    img.src = url;   // 缓存按图片路径区分，模式切换后仍能复用同一张图
+    imgCache[url] = img;
+    imgCacheOrder.push(url);
 
     while (imgCacheOrder.length > IMG_CACHE_MAX) {
         const oldest = imgCacheOrder.shift();
-        if (oldest === index) continue;      // 别把刚建好的这张删了
+        if (oldest === url) continue;        // 别把刚建好的这张删了
         delete imgCache[oldest];             // 丢掉引用，浏览器即可回收解码后的位图
     }
     return img;
@@ -2501,7 +2573,7 @@ function preloadAround(index) {
 }
 
 // ================= 一次性预加载全部背景图 =================
-// 把 36 张 WebP（合计约 16.9MB）拉进浏览器 HTTP 缓存，切换背景时直接命中。
+// 把当前模式的 WebP 拉进浏览器 HTTP 缓存，切换背景时直接命中。
 // 三个要点（都是为了避免"和当前要显示的那张抢连接"）：
 //   1) 用 fetch(priority:'low') 走低优先级，浏览器会把正常优先级的图片请求排在前面；
 //   2) 开发者模式来回跳时间轴时直接中止预加载，带宽全让给当前这张；
@@ -3026,6 +3098,7 @@ function collectSessionState(isAuto) {
     const totalMs = totalDurationMinutes * 60 * 1000;
     return {
         task: (taskNameInput.value || '').trim(),
+        stageMode: activeStageMode,
         totalMinutes: totalDurationMinutes,
         elapsedMs: Math.max(0, Math.min(currentElapsedMs(), totalMs)),
         startTime: sessionStartTimeObj ? sessionStartTimeObj.getTime() : Date.now(),
@@ -3116,7 +3189,9 @@ function resumeSuspended() {
     if (!item) { renderResumeBar(); return; }
 
     const data = item.data;
-    totalDurationMinutes = Math.min(Math.max(1, Math.round(data.totalMinutes)), MAX_DURATION_MINUTES);
+    // v1.6.0 的旧快照没有模式字段，按此前 36 阶段行为恢复。
+    applyStageMode(isStageMode(data.stageMode) ? data.stageMode : 'extended');
+    totalDurationMinutes = Math.min(Math.max(1, Math.round(data.totalMinutes)), getMaxDurationMinutes());
     elapsedMs = Math.max(0, Math.min(data.elapsedMs, totalDurationMinutes * 60000));
     sessionStartTimeObj = new Date(data.startTime || Date.now());
     imageOffset = Math.max(0, data.imageOffset || 0);
@@ -3167,7 +3242,7 @@ function discardSuspended() {
             // 【修复】在输入框/文本域里打字时不拦截：
             // 否则写心得备注时按 Shift+Enter 会莫名其妙进全屏（空格键早有这个保护）
             const tag = ((e.target && e.target.tagName) || '').toLowerCase();
-            if (tag === 'input' || tag === 'textarea') return;
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
             // 检测组合键：Shift + Enter
             if (e.shiftKey && e.key === 'Enter') {
@@ -3191,7 +3266,7 @@ function discardSuspended() {
         //   空格 = 暂停 / 继续，Esc = 关闭最上层弹窗（总结弹窗按 Esc 等同"不保存"）
         document.addEventListener('keydown', (e) => {
             const tag = ((e.target && e.target.tagName) || '').toLowerCase();
-            if (tag === 'input' || tag === 'textarea') return; // 正在打字时不拦截
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return; // 输入和选择时不拦截
 
             if (e.code === 'Space') {
                 const summaryOpen = document.getElementById('summary-modal').classList.contains('active');
@@ -3288,6 +3363,7 @@ taskInput.addEventListener('keydown', (e) => {
 
 // 2. 激活开发者模式函数
 function activateDevMode() {
+    if (!sessionActive) applyStageMode(prefs.stageMode);
     isDevMode = true;
 
     // 【关键】开发者模式要来回跳时间轴：先让预加载让路。
@@ -3295,7 +3371,7 @@ function activateDevMode() {
     stopAllPreload();
     schedulePrefetchAhead();   // isDevMode=true 时会顺手把已排好的预取定时器清掉
 
-    totalDurationMinutes = MAX_DURATION_MINUTES;
+    totalDurationMinutes = getMaxDurationMinutes();
     devSlider.max = totalDurationMinutes * 60;
     devContainer.style.display = 'block';
     timerScreen.classList.add('dev-mode');   // 让当前时间浮层避开顶部时间轴面板
@@ -3339,7 +3415,7 @@ function showCurrentStageText() {
 let stageApplyTimer = null;
 function scheduleStageApply(index) {
     const safe = ((index % resources.length) + resources.length) % resources.length;
-    const cached = imgCache[safe];
+    const cached = imgCache[resources[safe].img];
     const ready = cached && cached.complete && cached.naturalWidth > 0;
 
     if (stageApplyTimer) {
@@ -4771,8 +4847,9 @@ function refreshBackupStatus(note) {
         function syncSettingsUI() {
             Object.keys(PREF_DEFAULTS).forEach((key) => {
                 const box = document.getElementById('pref-' + key);
-                if (box) box.checked = !!prefs[key];
+                if (box && typeof PREF_DEFAULTS[key] === 'boolean') box.checked = !!prefs[key];
             });
+            syncStageModeUI();
             // 浏览器不支持屏幕常亮时，把这个开关置灰并说明原因，别让用户以为开了却没生效
             const wakeBox = document.getElementById('pref-keepAwake');
             if (wakeBox && !isWakeLockSupported()) {
