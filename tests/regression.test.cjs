@@ -330,10 +330,10 @@ test('旧列表含空项时，渲染按钮仍引用原记录下标', () => {
     assert.doesNotMatch(a.elements.get('history-list-content').innerHTML, /deleteHistoryItem\(0\)/);
 });
 
-test('设置中的赏析链接和 README 的 24 条来源完整', () => {
+test('设置中的赏析链接和 README 的 36 条来源完整', () => {
     assert.match(html, /href="https:\/\/mp\.weixin\.qq\.com\/s\/4gqoo0NMCwGUwEPzBJJqTQ"[^>]+rel="noopener noreferrer"/);
     const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
-    assert.equal((readme.match(/^\| \d+ \|/gm) || []).length, 24);
+    assert.equal((readme.match(/^\| \d+ \|/gm) || []).length, 36);
 });
 
 test('开始日期而不是保存日期决定热力图与今日合计', () => {
@@ -373,6 +373,102 @@ test('Service Worker 保留其他应用缓存', async () => {
     await wait;
     assert.equal(deleted.includes('other-app-cache'), false);
     assert.equal(deleted.includes('restoretimingtimer-images-v1'), true);
+});
+
+test('36 阶段按指定顺序排列，新增文案与本地图片完整', () => {
+    const a = app();
+    const stages = JSON.parse(a.run('JSON.stringify(resources)'));
+    assert.deepEqual(stages.map(s => s.title), ['奇点', '大爆炸', '星云', '太阳系', '地球形成', '冥古宙', '太古代', '元古代', '震旦纪', '寒武纪', '奥陶纪', '志留纪', '泥盆纪', '石炭纪', '二叠纪', '三叠纪', '侏罗纪', '白垩纪', '古近纪', '石器时代', '古代', '部落', '农业革命', '村庄', '文字发明', '人群', '近代', '工业革命', '现代', '信息时代', '城市', '未来城市', '核爆炸', '地球毁灭', '太阳毁灭', '宇宙毁灭']);
+    const additions = {
+        奇点: '一切尚未发生，寂静里藏着所有可能。',
+        星云: '尘埃缓缓聚拢，光也在悄悄靠近。',
+        冥古宙: '熔岩冷却，第一场雨落下，耐心会改变星球。',
+        元古代: '氧气充满海洋，改变总在无声中发生。',
+        志留纪: '生命试着上岸，笨拙也是开始。',
+        二叠纪: '森林沉入地层，积累会以另一种方式发光。',
+        古近纪: '恐龙远去，新的生命开始生长。',
+        石器时代: '火光照亮洞穴，学习从第一次尝试开始。',
+        农业革命: '种子落进泥土，等待有了形状。',
+        文字发明: '符号刻下思想，笔记替你记住时光。',
+        工业革命: '机器轰鸣，知识改变世界；你也正在改变自己。',
+        信息时代: '信息如潮，学会筛选，也学会安静。'
+    };
+    for (const [title, quote] of Object.entries(additions)) assert.equal(stages.find(s => s.title === title).quote, quote);
+    assert.equal(new Set(stages.map(s => s.img)).size, 36);
+    for (const stage of stages) assert(fs.statSync(path.join(root, stage.img)).size > 0, stage.title);
+});
+
+test('时长滚轮可选 12 小时，12 小时以上收口且 11 小时 59 分仍可用', () => {
+    const a = app();
+    a.run('initPicker()');
+    assert.match(a.elements.get('hour-content').innerHTML, /data-v="12"/);
+    assert.doesNotMatch(a.elements.get('hour-content').innerHTML, /data-v="13"/);
+    a.run('applyDurationDisplay(719)');
+    assert.equal(a.run('totalDurationMinutes'), 719);
+    a.elements.get('col-hour').scrollTop = 12 * 44;
+    a.elements.get('col-minute').scrollTop = 59 * 44;
+    a.run('confirmPicker()');
+    assert.equal(a.run('totalDurationMinutes'), 720);
+    assert.equal(a.storage.get('timing_lastDurationMinutes'), '720');
+});
+
+test('超过 8 小时的暂存可续上，仍保留 12 小时目标和原开始时间', () => {
+    const a = app();
+    const started = new Date(2026, 9, 5, 21).getTime();
+    a.set('timing_suspendedSession', { task: '长时专注', totalMinutes: 720, elapsedMs: 9 * 3600000, startTime: started, imageOffset: 0, savedAt: Date.now() });
+    a.run('resumeSuspended()');
+    assert.equal(a.run('totalDurationMinutes'), 720);
+    assert.equal(a.run('elapsedMs'), 9 * 3600000);
+    assert.equal(a.run('sessionStartTimeObj.getTime()'), started);
+    assert.equal(a.run('resources[currentResIndex].title'), '工业革命');
+    assert.equal(a.run('collectSessionState(true).totalMinutes'), 720);
+});
+
+test('开发者时间轴覆盖 12 小时，调试不覆盖上次的正常时长', () => {
+    const a = app();
+    a.storage.set('timing_lastDurationMinutes', '25');
+    a.run('activateDevMode()');
+    assert.equal(a.run('totalDurationMinutes'), 720);
+    assert.equal(Number(a.elements.get('dev-slider').max), 43200);
+    assert.equal(a.storage.get('timing_lastDurationMinutes'), '25');
+    assert.match(html, /id="dev-slider"[^>]+max="43200"/);
+});
+
+test('20 分钟边界正确切图，12 小时末尾停在宇宙毁灭并显示满环', () => {
+    const a = app();
+    a.run('totalDurationMinutes = 720');
+    for (let stage = 0; stage < 36; stage++) {
+        a.context.time = stage * 1200000;
+        assert.equal(a.run('getCycleIndex(time)'), stage);
+        a.context.time += 1199999;
+        assert.equal(a.run('getCycleIndex(time)'), stage);
+    }
+    a.run('syncResourceToCycle(getCycleIndex(43200000)); updateTimerUI(43200000)');
+    assert.equal(a.run('resources[currentResIndex].title'), '宇宙毁灭');
+    assert.equal(a.elements.get('timer-display').innerText, '12:00:00');
+    assert.equal(a.elements.get('progress-ring').style.strokeDashoffset, 0);
+    a.run('totalDurationMinutes = 20');
+    assert.equal(a.run('getCycleIndex(1200000)'), 0);
+});
+
+test('最后一个阶段不再提前下载会话结束后的图片', () => {
+    const a = app();
+    a.run('totalDurationMinutes = 720; elapsedMs = 11 * 3600000 + 40 * 60000; startTime = 1000; isRunning = true; prefetchTimer = null; schedulePrefetchAhead()');
+    assert.equal(a.run('prefetchTimer'), null);
+});
+
+test('后台结束兜底也会对齐最后阶段，停止计时并显示 12 小时总结', () => {
+    const a = app();
+    let end;
+    a.context.setTimeout = (callback, ms) => { if (ms === 43200000) end = callback; return 1; };
+    a.run('totalDurationMinutes = 720; isRunning = true; elapsedMs = 0; scheduleEndTimer()');
+    assert.equal(typeof end, 'function');
+    end();
+    assert.equal(a.run('isRunning'), false);
+    assert.equal(a.run('elapsedMs'), 43200000);
+    assert.equal(a.run('resources[currentResIndex].title'), '宇宙毁灭');
+    assert.equal(a.elements.get('summary-duration').innerText, '12:00:00');
+    assert.equal(a.elements.get('summary-modal').classList.contains('active'), true);
 });
 
 module.exports = { app, record, attachBackup };

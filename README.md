@@ -1,8 +1,8 @@
 # timing 计时器（RestoreTimingTimer）
 
-**v1.5.1**
+**v1.6.0**
 
-单文件（`index.html`）的沉浸式学习计时器：设定时长 → 全屏背景 + 进度环 → 到点提醒 → 记录 / 导出。
+单文件（`index.html`）的沉浸式学习计时器，最长 12 小时、36 个阶段（每阶段 20 分钟）：设定时长 → 全屏背景 + 进度环 → 到点提醒 → 记录 / 导出。
 所有可选项都在设置弹窗里（默认全开），云同步已在 v1.3.0 移除。
 版本号也显示在设置弹窗底部（齿轮图标），单一来源是 `index.html` 里的 `APP_VERSION`。
 
@@ -37,8 +37,7 @@ python -m http.server 8000     # 然后打开 http://localhost:8000/
 - **历史记录可改名**：在历史里点一下任务名就能改（`Enter` 保存 / `Esc` 取消 / 点别处保存），
   只改标题，时长、开始时间和备注都不动。
 - **专注热力图**：历史记录里有一张类似 GitHub 贡献图的热力图（最近 18 周，列 = 周、行 = 星期）：
-  灰 = 当天没用过，蓝 = 用过，紫 = 当天超过 4 小时，红 = **当天达到 8 小时**（单次时长上限就是 8 小时，
-  所以红是"满 8 小时"而不是"超 8 小时"；一天里多段累加也算）；
+  灰 = 当天没用过，蓝 = 用过，紫 = 当天超过 4 小时，红 = **当天达到 8 小时**（一天里多段累加也算，单次时长最长 12 小时）；
   点任意圆点会在下方显示那天的日期、记录条数和当天总时长；顶部有颜色图例和 `?` 说明。
 - **连续使用天数**：热力图右上角显示连续使用的倍数徽章 `×N`（第 1 天用浅色"连续 1 天"提示）。
   今天还没开始不算断，会从昨天继续往前数；断掉后徽章消失。
@@ -56,8 +55,8 @@ python -m http.server 8000     # 然后打开 http://localhost:8000/
   需要的话按 `右 Ctrl + →` 可以手动强制切下一张。
 - **背景等比填充全屏**：默认保持图片比例并铺满屏幕，适应不同设备、窗口大小和网页缩放；边缘可能被裁切，图片不会被横向或纵向拉伸。背景缓慢平移使用合成层变换，切图沿用解码后的双层淡入，暂停时继续冻结。设置 → 通用中可关闭，恢复原来的拉伸显示。
 - **背景图加载策略**（v1.2.6 起）：
-  - 计时中在**下一个 20 分钟节点到来前 90 秒预取"下一张"**——到点切图零等待，开场也不会一下吃 7.4MB；
-  - 回到主页空闲时再把 24 张慢慢预热；一进计时或开发者模式就让路，不抢带宽；
+  - 计时中在**下一个 20 分钟节点到来前 90 秒预取"下一张"**——到点切图零等待，开场也不会一下下载全部约 16.9MB 背景图；
+  - 回到主页空闲时再把 36 张慢慢预热；一进计时或开发者模式就让路，不抢带宽；
   - 线上用 **Service Worker** 把背景图永久缓存在本地（GitHub Pages 只给 `max-age=600`，10 分钟就过期，
     而计时器 20 分钟才切一次图）——首次访问之后**断网也能正常切图**，开发者模式来回跳也是秒切。
 - **暂停是真的暂停**：计时、进度环、文字呼吸、背景平移与三圈波纹动画全部冻结。
@@ -80,14 +79,14 @@ python -m http.server 8000     # 然后打开 http://localhost:8000/
 | `Esc` | 关闭最上层弹窗（总结弹窗按 Esc 视为"不保存"） |
 | `Shift + Enter` | 进入 / 退出全屏 |
 | 页面空白处三连击 | 进入全屏 |
-| 任务名输入框里输入 `water` 再回车 | 开发者模式（8 小时时间轴，调试用；计时页显示当前时期名） |
+| 任务名输入框里输入 `water` 再回车 | 开发者模式（12 小时时间轴，调试用；计时页显示当前时期名） |
 
 计时进行中刷新或关闭页面会弹确认框，避免误操作丢掉整段专注时间。
 
 ## 目录说明
 
 - `index.html`：整个应用（HTML + CSS + JS 单文件）
-- `images/*.webp`：24 张背景图，每 20 分钟自动切换一张
+- `images/*.webp`：36 张背景图，每 20 分钟自动切换一张
 - `images/*.png` / `images/12.jpg`：压缩前的原图（约 141MB），确认画质满意后可以删掉
 - `sw.js`：Service Worker（背景图永久缓存 + 页面网络优先；只在 https 生效，`file://` 自动跳过）
 
@@ -171,6 +170,13 @@ node --test tests/regression.test.cjs
 - 电脑休眠/睡眠期间 `performance.now()` 是否继续走，取决于系统与浏览器实现，未做唤醒校准。
 
 ## 更新日志
+
+### v1.6.0
+
+- 扩展：最长 12 小时、36 阶段，每阶段仍为 20 分钟；按指定顺序插入 12 句新文案，原有 24 阶段内容保留。
+- 素材：使用用户选定的 12 张背景图，按原比例生成 WebP；原始选图留在本地，新增素材出处见 [素材记录](docs/background-sources.md)。
+- 同步：时长滚轮、记住设置、暂存恢复与开发者时间轴支持 12 小时；结束点停在最后阶段，不切回首张图片。
+- 维护：新增图片缓存版本更新；预加载覆盖所有 36 张图片，最后一个阶段不预取会话结束后的图片。
 
 ### v1.5.1
 
@@ -377,33 +383,45 @@ node --test tests/regression.test.cjs
 - 移除：所有音效相关代码（本应用不发声）。
 - 清理：删掉 `timing/` 陈旧副本（旧版 `timing.html` + 1 字节空白 `index.html`）。
 
-## 24 个阶段：图片来源与文案
+## 36 个阶段：图片来源与文案
 
-以下为图片来源资料；应用实际仍使用随附的本地 WebP 图片。
+每个阶段持续 20 分钟，总计 12 小时。原有 24 个阶段保持原来的相对顺序，新增阶段插在用户指定的位置。文案赏析：[阅读全文](https://mp.weixin.qq.com/s/4gqoo0NMCwGUwEPzBJJqTQ)。新增素材的作者、许可与文件记录见 [素材记录](docs/background-sources.md)。
 
 | 序号 | 阶段 | 文案 | 图片来源 |
 | --- | --- | --- | --- |
-| 1 | 大爆炸 | 宇宙由这一刻诞生，你的征程也由此开始。 | [来源 1](https://wall.alphacoders.com/big.php?i=689592) |
-| 2 | 太阳系 | 太阳系正在慢慢形成，万事开头难。 | [来源 2](https://www.wallpaperflare.com/static/67/625/250/planet-space-two-planets-wallpaper.jpg) |
-| 3 | 地球形成 | 孕育生命的摇篮，似乎有灵感涌上心头？ | [来源 3](https://wallpaper-house.com/data/out/10/wallpaper2you_424783.jpg) |
-| 4 | 太古代 | 第一个生命诞生了，是否得到了某种启发呢？ | [来源 4](https://www.baltana.com/nature/lava-wallpaper-17417.html) |
-| 5 | 震旦纪 | 进化是最伟大的馈赠，在不知不觉中，你正在感受进步。 | [来源 5](https://cdn-imgproxy.mamado.su/DrFK-t5TA15AHpVOJJKKXcYSQIVK7xn9bihWrInNmfY/rs:fit:2000:2000:1/g:ce/q:90/czM6Ly9tYW1hZG8t/YXBpLXByb2R1Y3Rp/b24vc3RvcmFnZS8x/MzQ4NTE0LzkzMzAz/NDgyMjJfOGVhNzcw/Y2RlNl9iLmpwZw.webp) |
-| 6 | 寒武纪 | 鱼类最活跃的时期，鱼儿水中游，时光一去不回头。 | [来源 6](https://wallpaperaccess.com/full/280160.jpg) |
-| 7 | 奥陶纪 | 大陆板块形成，更大的挑战即将来临。 | [来源 7](https://sppagebuilder.com/images/2021/wanderlust/destination-img2.jpg) |
-| 8 | 泥盆纪 | 陆地的感觉好吗？请抓紧每一分钟。 | [来源 8](https://ga.de/bonn/stadt-bonn/aeltester-wald-der-welt-soll-in-lindlar-gestanden-haben_aid-42489813) |
-| 9 | 石炭纪 | 火山开始喷发，大型爬行动物诞生了，是否有所收获了？ | [来源 9](https://wallpaperbat.com/img/356655-wallpaper-mountain-5k-4k-wallpaper-indonesia-desert-clouds.jpg) |
-| 10 | 三叠纪 | 山峰丛林开始形成，注意静心。 | [来源 10](https://www.insightvacations.com/blog/7-reasons-go-guided-us-national-parks/) |
-| 11 | 侏罗纪 | 恐龙横行的年代，保持专注，克服难关。 | [来源 11](https://get.wallhere.com/photo/2245x1275-px-artwork-dinosaurs-1265425.jpg) |
-| 12 | 白垩纪 | 恐龙灭绝，现在可以告一段落了。 | [来源 12](https://wall.alphacoders.com/big.php?i=788900) |
-| 13 | 古代 | 人类的祖先在这篇大陆上开疆辟土，学习有时候需要互相帮助。 | [来源 13](https://eskipaper.com/images/pyramid-fantasy-wallpaper-1.jpg) |
-| 14 | 部落 | 听说印第安人始终保持着这样的生活方式，今天的学习到这里也可以结束了。 | [来源 14](https://get.pxhere.com/photo/hand-girl-finger-human-nail-close-up-hand-model-1412088.jpg) |
-| 15 | 村庄 | 人类不再到处游荡，有了自己固定的“家”，记得回忆和巩固自己今天的学习。 | [来源 15](https://i.pinimg.com/originals/d7/7e/d4/d77ed4f21497b07151880e4d50b0db03.jpg) |
-| 16 | 人群 | 人多力量大？前提是要有着共同的目标。 | [来源 16](https://www.airdev.co/case-studies/ticketrev-marketplace-startup-bubble) |
-| 17 | 近代 | 王国，朝代逐渐形成，注意归纳你所学的知识。 | [来源 17](https://i1.pickpik.com/photos/597/234/573/5968782224741-c105354d98ebb985a213f09d77a9b751.jpg) |
-| 18 | 现代 | 我们所生活的年代，注意劳逸结合。 | [来源 18](https://images.hdqwalls.com/download/hot-air-balloons-open-sky-4k-sm-3840x2400.jpg) |
-| 19 | 城市 | 繁荣时期，去做做别的事情吧。 | [来源 19](https://1.bp.blogspot.com/-980EugtJ3dc/X_8HM4vqD2I/AAAAAAAAQkk/4hxQ8YnHBFQrP9-dxQFrvalYQHFgIrj3gCLcBGAsYHQ/s2048/piotr-chrobot-6oUsyeYXgTg-unsplash.jpg) |
-| 20 | 未来城市 | 人类科技的巅峰，每天的知识获取量是有限的。 | [来源 20](https://i.pinimg.com/originals/e8/23/01/e82301aaa2ea81f52964dafa301ca067.jpg) |
-| 21 | 核爆炸 | 物极必反，人类如此，学习也是如此。 | [来源 21](https://i0.wp.com/awesomewallpapersblog.com/wp-content/uploads/2015/08/3d_fantasy_places_hd_0026.jpg?ssl=1) |
-| 22 | 地球毁灭 | 世界的尽头，它必将发生。过度的学习，会影响短期记忆。 | [来源 22](https://joyreactor.cc/post/954288) |
-| 23 | 太阳毁灭 | 生命迹象消失，进入效率低下期。 | [来源 23](https://wallpapercave.com/wp/wp4670044.jpg) |
-| 24 | 宇宙毁灭 | 宇宙归于沉寂，你的征程也走完了，去好好休息吧。 | [来源 24](https://cerenas.club/uploads/posts/2022-12/1670880515_cerenas-club-p-krasivii-fon-dlya-yandeksa-vkontakte-69.jpg) |
+| 1 | 奇点 | 一切尚未发生，寂静里藏着所有可能。 | [用户选图](docs/background-sources.md) |
+| 2 | 大爆炸 | 宇宙由这一刻诞生，你的征程也由此开始。 | [来源 2](https://wall.alphacoders.com/big.php?i=689592) |
+| 3 | 星云 | 尘埃缓缓聚拢，光也在悄悄靠近。 | [素材来源](https://esawebb.org/images/weic2205a/) |
+| 4 | 太阳系 | 太阳系正在慢慢形成，万事开头难。 | [来源 4](https://www.wallpaperflare.com/static/67/625/250/planet-space-two-planets-wallpaper.jpg) |
+| 5 | 地球形成 | 孕育生命的摇篮，似乎有灵感涌上心头？ | [来源 5](https://wallpaper-house.com/data/out/10/wallpaper2you_424783.jpg) |
+| 6 | 冥古宙 | 熔岩冷却，第一场雨落下，耐心会改变星球。 | [用户选图](docs/background-sources.md) |
+| 7 | 太古代 | 第一个生命诞生了，是否得到了某种启发呢？ | [来源 7](https://www.baltana.com/nature/lava-wallpaper-17417.html) |
+| 8 | 元古代 | 氧气充满海洋，改变总在无声中发生。 | [素材来源](https://commons.wikimedia.org/wiki/File:Stromatolithes.jpg) |
+| 9 | 震旦纪 | 进化是最伟大的馈赠，在不知不觉中，你正在感受进步。 | [来源 9](https://cdn-imgproxy.mamado.su/DrFK-t5TA15AHpVOJJKKXcYSQIVK7xn9bihWrInNmfY/rs:fit:2000:2000:1/g:ce/q:90/czM6Ly9tYW1hZG8t/YXBpLXByb2R1Y3Rp/b24vc3RvcmFnZS8x/MzQ4NTE0LzkzMzAz/NDgyMjJfOGVhNzcw/Y2RlNl9iLmpwZw.webp) |
+| 10 | 寒武纪 | 鱼类最活跃的时期，鱼儿水中游，时光一去不回头。 | [来源 10](https://wallpaperaccess.com/full/280160.jpg) |
+| 11 | 奥陶纪 | 大陆板块形成，更大的挑战即将来临。 | [来源 11](https://sppagebuilder.com/images/2021/wanderlust/destination-img2.jpg) |
+| 12 | 志留纪 | 生命试着上岸，笨拙也是开始。 | [素材来源](https://commons.wikimedia.org/wiki/File:Silurian_age_landscape_by_Vishchun.jpg) |
+| 13 | 泥盆纪 | 陆地的感觉好吗？请抓紧每一分钟。 | [来源 13](https://ga.de/bonn/stadt-bonn/aeltester-wald-der-welt-soll-in-lindlar-gestanden-haben_aid-42489813) |
+| 14 | 石炭纪 | 火山开始喷发，大型爬行动物诞生了，是否有所收获了？ | [来源 14](https://wallpaperbat.com/img/356655-wallpaper-mountain-5k-4k-wallpaper-indonesia-desert-clouds.jpg) |
+| 15 | 二叠纪 | 森林沉入地层，积累会以另一种方式发光。 | [素材来源](https://www.pexels.com/photo/petrified-tree-trunk-in-the-desert-14631408/) |
+| 16 | 三叠纪 | 山峰丛林开始形成，注意静心。 | [来源 16](https://www.insightvacations.com/blog/7-reasons-go-guided-us-national-parks/) |
+| 17 | 侏罗纪 | 恐龙横行的年代，保持专注，克服难关。 | [来源 17](https://get.wallhere.com/photo/2245x1275-px-artwork-dinosaurs-1265425.jpg) |
+| 18 | 白垩纪 | 恐龙灭绝，现在可以告一段落了。 | [来源 18](https://wall.alphacoders.com/big.php?i=788900) |
+| 19 | 古近纪 | 恐龙远去，新的生命开始生长。 | [素材来源](https://www.pexels.com/photo/serene-forest-with-sunlight-filtering-through-trees-37106306/) |
+| 20 | 石器时代 | 火光照亮洞穴，学习从第一次尝试开始。 | [素材来源](https://commons.wikimedia.org/wiki/File:Lascaux_II.jpg) |
+| 21 | 古代 | 人类的祖先在这篇大陆上开疆辟土，学习有时候需要互相帮助。 | [来源 21](https://eskipaper.com/images/pyramid-fantasy-wallpaper-1.jpg) |
+| 22 | 部落 | 听说印第安人始终保持着这样的生活方式，今天的学习到这里也可以结束了。 | [来源 22](https://get.pxhere.com/photo/hand-girl-finger-human-nail-close-up-hand-model-1412088.jpg) |
+| 23 | 农业革命 | 种子落进泥土，等待有了形状。 | [用户选图](docs/background-sources.md) |
+| 24 | 村庄 | 人类不再到处游荡，有了自己固定的"家"，记得回忆和巩固自己今天的学习。 | [来源 24](https://i.pinimg.com/originals/d7/7e/d4/d77ed4f21497b07151880e4d50b0db03.jpg) |
+| 25 | 文字发明 | 符号刻下思想，笔记替你记住时光。 | [素材来源](https://www.pexels.com/photo/hieroglyphs-in-close-up-15131543/) |
+| 26 | 人群 | 人多力量大？前提是要有着共同的目标。 | [来源 26](https://www.airdev.co/case-studies/ticketrev-marketplace-startup-bubble) |
+| 27 | 近代 | 王国，朝代逐渐形成，注意归纳你所学的知识。 | [来源 27](https://i1.pickpik.com/photos/597/234/573/5968782224741-c105354d98ebb985a213f09d77a9b751.jpg) |
+| 28 | 工业革命 | 机器轰鸣，知识改变世界；你也正在改变自己。 | [用户选图](docs/background-sources.md) |
+| 29 | 现代 | 我们所生活的年代，注意劳逸结合。 | [来源 29](https://images.hdqwalls.com/download/hot-air-balloons-open-sky-4k-sm-3840x2400.jpg) |
+| 30 | 信息时代 | 信息如潮，学会筛选，也学会安静。 | [用户选图](docs/background-sources.md) |
+| 31 | 城市 | 繁荣时期，去做做别的事情吧。 | [来源 31](https://1.bp.blogspot.com/-980EugtJ3dc/X_8HM4vqD2I/AAAAAAAAQkk/4hxQ8YnHBFQrP9-dxQFrvalYQHFgIrj3gCLcBGAsYHQ/s2048/piotr-chrobot-6oUsyeYXgTg-unsplash.jpg) |
+| 32 | 未来城市 | 人类科技的巅峰，每天的知识获取量是有限的。 | [来源 32](https://i.pinimg.com/originals/e8/23/01/e82301aaa2ea81f52964dafa301ca067.jpg) |
+| 33 | 核爆炸 | 物极必反，人类如此，学习也是如此。 | [来源 33](https://i0.wp.com/awesomewallpapersblog.com/wp-content/uploads/2015/08/3d_fantasy_places_hd_0026.jpg?ssl=1) |
+| 34 | 地球毁灭 | 世界的尽头，它必将发生。过度的学习，会影响短期记忆。 | [来源 34](https://joyreactor.cc/post/954288) |
+| 35 | 太阳毁灭 | 生命迹象消失，进入效率低下期。 | [来源 35](https://wallpapercave.com/wp/wp4670044.jpg) |
+| 36 | 宇宙毁灭 | 宇宙归于沉寂，你的征程也走完了，去好好休息吧。 | [来源 36](https://cerenas.club/uploads/posts/2022-12/1670880515_cerenas-club-p-krasivii-fon-dlya-yandeksa-vkontakte-69.jpg) |

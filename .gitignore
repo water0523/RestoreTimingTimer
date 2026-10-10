@@ -3,6 +3,9 @@
 timing-backup*.json
 Timing_备份_*.json
 
+# 本地选图与原始素材，不上传到公开仓库
+待选素材/
+
 # 系统垃圾
 Thumbs.db
 desktop.ini

@@ -1337,7 +1337,7 @@
         <div class="dev-close" onclick="exitDevMode()">×</div>
     </div>
     
-    <input type="range" id="dev-slider" min="0" max="28800" step="1" value="0">
+    <input type="range" id="dev-slider" min="0" max="43200" step="1" value="0">
 </div>
         <div class="controls">
             <!-- 结束按钮：加了 btn-end 类 -->
@@ -1549,7 +1549,7 @@
             <input type="checkbox" id="pref-preloadAll" onchange="onPrefToggle('preloadAll', this.checked)" />
             <span class="settings-toggle-text">空闲时预加载全部背景图</span>
         </label>
-        <div class="help-text">停在主页没事做的时候，把 24 张背景图（约 7.4MB）慢慢缓存到本地。关掉可以省流量。</div>
+        <div class="help-text">停在主页没事做的时候，把 36 张背景图（约 16.9MB）慢慢缓存到本地。关掉可以省流量。</div>
     </div>
 
     <div class="settings-section-title" style="margin-top: 18px;">数据备份</div>
@@ -1581,36 +1581,45 @@
         <button class="btn-confirm-flat" style="flex: 1;" onclick="closeSettingsModal()">完成</button>
     </div>
 
-    <div class="app-version">timing 计时器 <span id="app-version-text">v1.4.3</span></div>
+    <div class="app-version">timing 计时器 <span id="app-version-text">v1.6.0</span></div>
 </div>
     <script>
         // ================= 配置数据 =================
 // ================= 配置数据 (本地图片版) =================
 const resources = [
             // --- 第 1 组：宇宙与地球起源 ---
+            { img: './images/25.webp', title: '奇点', quote: '一切尚未发生，寂静里藏着所有可能。' },
             { img: './images/1.webp', title: '大爆炸', quote: '宇宙由这一刻诞生，你的征程也由此开始。' },
+            { img: './images/26.webp', title: '星云', quote: '尘埃缓缓聚拢，光也在悄悄靠近。' },
             { img: './images/2.webp', title: '太阳系', quote: '太阳系正在慢慢形成，万事开头难。' },
             { img: './images/3.webp', title: '地球形成', quote: '孕育生命的摇篮，似乎有灵感涌上心头？' },
+            { img: './images/27.webp', title: '冥古宙', quote: '熔岩冷却，第一场雨落下，耐心会改变星球。' },
             { img: './images/4.webp', title: '太古代', quote: '第一个生命诞生了，是否得到了某种启发呢？' },
+            { img: './images/28.webp', title: '元古代', quote: '氧气充满海洋，改变总在无声中发生。' },
             { img: './images/5.webp', title: '震旦纪', quote: '进化是最伟大的馈赠，在不知不觉中，你正在感受进步。' },
             { img: './images/6.webp', title: '寒武纪', quote: '鱼类最活跃的时期，鱼儿水中游，时光一去不回头。' },
-            
             // --- 第 2 组：古生物演化 ---
             { img: './images/7.webp', title: '奥陶纪', quote: '大陆板块形成，更大的挑战即将来临。' },
+            { img: './images/29.webp', title: '志留纪', quote: '生命试着上岸，笨拙也是开始。' },
             { img: './images/8.webp', title: '泥盆纪', quote: '陆地的感觉好吗？请抓紧每一分钟。' },
             { img: './images/9.webp', title: '石炭纪', quote: '火山开始喷发，大型爬行动物诞生了，是否有所收获了？' },
+            { img: './images/30.webp', title: '二叠纪', quote: '森林沉入地层，积累会以另一种方式发光。' },
             { img: './images/10.webp', title: '三叠纪', quote: '山峰丛林开始形成，注意静心。' },
             { img: './images/11.webp', title: '侏罗纪', quote: '恐龙横行的年代，保持专注，克服难关。' },
             { img: './images/12.webp', title: '白垩纪', quote: '恐龙灭绝，现在可以告一段落了。' },
-
+            { img: './images/31.webp', title: '古近纪', quote: '恐龙远去，新的生命开始生长。' },
+            { img: './images/32.webp', title: '石器时代', quote: '火光照亮洞穴，学习从第一次尝试开始。' },
             // --- 第 3 组：人类文明发展 ---
             { img: './images/13.webp', title: '古代', quote: '人类的祖先在这篇大陆上开疆辟土，学习有时候需要互相帮助。' },
             { img: './images/14.webp', title: '部落', quote: '听说印第安人始终保持着这样的生活方式，今天的学习到这里也可以结束了。' },
+            { img: './images/33.webp', title: '农业革命', quote: '种子落进泥土，等待有了形状。' },
             { img: './images/15.webp', title: '村庄', quote: '人类不再到处游荡，有了自己固定的"家"，记得回忆和巩固自己今天的学习。' },
+            { img: './images/34.webp', title: '文字发明', quote: '符号刻下思想，笔记替你记住时光。' },
             { img: './images/16.webp', title: '人群', quote: '人多力量大？前提是要有着共同的目标。' },
             { img: './images/17.webp', title: '近代', quote: '王国，朝代逐渐形成，注意归纳你所学的知识。' },
+            { img: './images/35.webp', title: '工业革命', quote: '机器轰鸣，知识改变世界；你也正在改变自己。' },
             { img: './images/18.webp', title: '现代', quote: '我们所生活的年代，注意劳逸结合。' },
-
+            { img: './images/36.webp', title: '信息时代', quote: '信息如潮，学会筛选，也学会安静。' },
             // --- 第 4 组：未来与终结 ---
             { img: './images/19.webp', title: '城市', quote: '繁荣时期，去做做别的事情吧。' },
             { img: './images/20.webp', title: '未来城市', quote: '人类科技的巅峰，每天的知识获取量是有限的。' },
@@ -1623,7 +1632,7 @@ const resources = [
         // ================= 全局变量 =================
 // ================= 全局变量 =================
         let totalDurationMinutes = 0;  // 0 = 未设置（必须在设置页选好时长才能开始）
-        const APP_VERSION = '1.5.1';   // 版本号（改动记录见 README.md）
+        const APP_VERSION = '1.6.0';   // 版本号（改动记录见 README.md）
 
         // ================= 偏好设置（设置弹窗里的开关） =================
         // 所有"可以自己选"的功能都收敛到这里，**默认全部打开**。
@@ -1841,9 +1850,9 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         }
 
         function initPicker() {
-            // 生成小时 (0-8：计时器上限 8 小时)
+            // 小时上限随完整阶段总时长变化（36 × 20 分钟 = 12 小时）
             let hHtml = '<div class="picker-placeholder"></div>';
-            for(let i=0; i<=8; i++) hHtml += `<div class="picker-item" data-v="${i}">${i}</div>`;
+            for(let i=0; i<=MAX_DURATION_MINUTES / 60; i++) hHtml += `<div class="picker-item" data-v="${i}">${i}</div>`;
             hHtml += '<div class="picker-placeholder"></div>';
             document.getElementById('hour-content').innerHTML = hHtml;
 
@@ -1913,11 +1922,10 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
         }
 
         // ================= 记住上次设置（任务名 / 时长） =================
-        const MAX_DURATION_MINUTES = 480;   // 计时上限 8 小时
+        const MAX_DURATION_MINUTES = resources.length * CYCLE_MS / 60000;   // 完整时间轴：12 小时
 
         function persistLastSetup() {
-            // 【修复】开发者模式（water 后门）会把 480 分钟和 "Developer Testing"
-            // 写进"上次设置"，下次正常打开就变成 8 小时。调试状态不参与记忆。
+            // 调试状态不参与记忆，避免开发者时间轴覆盖正常任务的时长。
             if (isDevMode) return;
             if (!prefs.rememberSetup) return;   // 设置里关掉了"记住上次设置"
             try {
@@ -1957,7 +1965,7 @@ let dragDebounceTimer = null;   // 用于判断滑块何时停止
 
         // 把时长同步到设置页的显示（数值 + 单位 + 下划线 + 提示语颜色）
         function applyDurationDisplay(minutes, hintText) {
-            // 上限 8 小时（旧的本地设置/暂存里可能还留着更大的值，这里统一收口）
+            // 统一限制到完整时间轴时长，兼容旧的本地设置与暂存。
             const mins = Math.min(Math.max(1, Math.round(minutes)), MAX_DURATION_MINUTES);
             totalDurationMinutes = mins;
 
@@ -2068,6 +2076,12 @@ function startFocus() {
 }
         // 背景图与切图：索引 = 时间轴圈数 + 手动偏移
         // 手动切图只改偏移，所以"到下一个 20 分钟节点"依然会继续往前切一张。
+        function getCycleIndex(elapsedNow) {
+            // 到点时仍属于最后一个阶段，不进入下一圈后取模切回第一张。
+            const finalMs = Math.max(0, totalDurationMinutes * 60000 - 1);
+            return Math.floor(Math.max(0, Math.min(elapsedNow, finalMs)) / CYCLE_MS);
+        }
+
         function showImageAt(cycleIndex) {
             currentResIndex = cycleIndex + imageOffset;
             updateResource(currentResIndex);
@@ -2084,7 +2098,7 @@ function startFocus() {
         function showNextImage() {
             if (isRunning) {
                 // 刚从前台/后台切换回来时，先按时间轴向前对齐（只向前，不回退）
-                const cycle = Math.floor((elapsedMs + (performance.now() - startTime)) / CYCLE_MS);
+                const cycle = getCycleIndex(elapsedMs + (performance.now() - startTime));
                 if (cycle > lastCycleIndex) lastCycleIndex = cycle;
             }
             imageOffset += 1;
@@ -2103,10 +2117,11 @@ function startFocus() {
             clearCycleTimer();
             if (!isRunning) return;
             const elapsedNow = elapsedMs + (performance.now() - startTime);
+            if ((Math.floor(elapsedNow / CYCLE_MS) + 1) * CYCLE_MS >= totalDurationMinutes * 60000) return;
             cycleTimerHandle = setTimeout(() => {
                 if (!isRunning) return;
                 const nowElapsed = elapsedMs + (performance.now() - startTime);
-                syncResourceToCycle(Math.floor(nowElapsed / CYCLE_MS));
+                syncResourceToCycle(getCycleIndex(nowElapsed));
                 scheduleCycleTimer();   // 链式安排下一个节点
             }, msUntilNextCycle(elapsedNow));
         }
@@ -2119,7 +2134,7 @@ function startFocus() {
         }
 
         // ================= A. 提前量预取：节点前 90 秒把"下一张"拉下来 =================
-        // 不再开场就下 7.4MB，而是在下一个 20 分钟节点到来前 90 秒预取那一张：
+        // 不在开场就下载全部背景图，而是在下一个 20 分钟节点到来前 90 秒预取那一张：
         // 到点切图零等待，开场也没有带宽风暴。
         // 开发者模式完全不预取（带宽全给当前要显示的那张）。
         const PREFETCH_LEAD_MS = 90000;
@@ -2135,6 +2150,7 @@ function startFocus() {
             // 暂停中 / 开发者模式 / 设置里关掉了预取（省流量）都不预取
             if (!isRunning || isDevMode || !prefs.prefetch) return;
             const elapsedNow = elapsedMs + (performance.now() - startTime);
+            if ((Math.floor(elapsedNow / CYCLE_MS) + 1) * CYCLE_MS >= totalDurationMinutes * 60000) return;
             prefetchTimer = setTimeout(() => {
                 prefetchTimer = null;
                 prefetchNextImage();
@@ -2145,6 +2161,7 @@ function startFocus() {
             if (!isRunning || isDevMode || !prefs.prefetch) return;
             const elapsedNow = elapsedMs + (performance.now() - startTime);
             const nextCycle = Math.floor(elapsedNow / CYCLE_MS) + 1;
+            if (nextCycle * CYCLE_MS >= totalDurationMinutes * 60000) return;
             const nextIndex = nextCycle + imageOffset;
             ensureImage(((nextIndex % resources.length) + resources.length) % resources.length);
         }
@@ -2196,7 +2213,7 @@ function startTimerLogic(isResume) {
         // 【修复】原来这里是 currentResIndex++：标签页切后台/电脑休眠/明显卡顿时 rAF 不跑，
         // 回来无论跳过了几圈都只前进 1 张，背景会永久落后于实际进度（后台 2 小时就落后 5 张）。
         // 改成直接用"第几圈"推导索引，跳过多少圈都能自动追上；另有 scheduleCycleTimer 兜底。
-        syncResourceToCycle(Math.floor(totalCurrentMs / CYCLE_MS));
+        syncResourceToCycle(getCycleIndex(totalCurrentMs));
 
         // 检查结束
         if (totalSeconds >= totalDurationMinutes * 60) {
@@ -2317,7 +2334,7 @@ function stopTimer() {
     stopTitleFlash();
     timerScreen.classList.remove('paused');
     
-    // 回到主页=空闲：这时候才去把 24 张图慢慢预热（不打扰任何计时）
+    // 回到主页=空闲：这时候才把全部背景图慢慢预热（不打扰任何计时）
     preloadAllImagesInBackground();
     
     // --- 【新增：必须手动杀死所有文字动画定时器】 ---
@@ -2353,6 +2370,7 @@ function stopTimer() {
                 elapsedMs = totalDurationMinutes * 60 * 1000;
                 updateTimerUI(elapsedMs);
                 isRunning = false;
+                syncResourceToCycle(getCycleIndex(elapsedMs));
                 finishTimer();
             }, remainMs);
         }
@@ -2423,9 +2441,9 @@ function stopTimer() {
 
 // 替换 updateResource 函数
 // 图片策略：
-//   1) 页面加载后把 24 张 WebP（合计约 7.4MB）全部拉进浏览器 HTTP 缓存 —— 切图不再等下载；
+//   1) 页面加载后把 36 张 WebP（合计约 16.9MB）全部拉进浏览器 HTTP 缓存 —— 切图不再等下载；
 //   2) 但只把"正在用的邻近几张"作为 Image 对象长期持有（IMG_CACHE_MAX），
-//      因为 24 张 2560px 解码位图约几百 MB，全留着会吃内存；
+//      因为全部 2560px 解码位图约几百 MB，全留着会吃内存；
 //      预加载用临时 Image 对象，塞进缓存后即可被回收，切换时从磁盘缓存秒读。
 const imgCache = {};
 const imgCacheOrder = [];
@@ -2483,11 +2501,11 @@ function preloadAround(index) {
 }
 
 // ================= 一次性预加载全部背景图 =================
-// 把 24 张 WebP（合计约 7.4MB）拉进浏览器 HTTP 缓存，切换背景时直接命中。
+// 把 36 张 WebP（合计约 16.9MB）拉进浏览器 HTTP 缓存，切换背景时直接命中。
 // 三个要点（都是为了避免"和当前要显示的那张抢连接"）：
 //   1) 用 fetch(priority:'low') 走低优先级，浏览器会把正常优先级的图片请求排在前面；
 //   2) 开发者模式来回跳时间轴时直接中止预加载，带宽全让给当前这张；
-//   3) 只长期持有邻近几张 Image 对象，避免 24 张解码位图常驻内存。
+//   3) 只长期持有邻近几张 Image 对象，避免全部解码位图常驻内存。
 const PRELOAD_CONCURRENCY = 3;
 const PRELOAD_GAP_MS = 120;
 let preloadState = { started: false, aborted: false, done: 0, total: 0 };
@@ -3116,7 +3134,7 @@ function resumeSuspended() {
 
     alternatingText.classList.remove('hidden');
 
-    lastCycleIndex = Math.floor(elapsedMs / CYCLE_MS);
+    lastCycleIndex = getCycleIndex(elapsedMs);
     currentResIndex = lastCycleIndex + imageOffset;
     // 时期名和图片一起显示（第三个参数 = 立刻写文字），保证两者一致
     updateResource(currentResIndex, true, true);
@@ -3277,7 +3295,8 @@ function activateDevMode() {
     stopAllPreload();
     schedulePrefetchAhead();   // isDevMode=true 时会顺手把已排好的预取定时器清掉
 
-    totalDurationMinutes = 480; 
+    totalDurationMinutes = MAX_DURATION_MINUTES;
+    devSlider.max = totalDurationMinutes * 60;
     devContainer.style.display = 'block';
     timerScreen.classList.add('dev-mode');   // 让当前时间浮层避开顶部时间轴面板
     
@@ -3362,7 +3381,7 @@ devSlider.addEventListener('input', (e) => {
     updateTimerUI(sliderMs);
 
     // 3. 资源切换逻辑
-    const correctCycleIndex = Math.floor(sliderMs / CYCLE_MS);
+    const correctCycleIndex = getCycleIndex(sliderMs);
     if (correctCycleIndex !== currentResIndex) {
         imageOffset = 0;                       // 拖动跳转时回到"时间轴原始图"
         currentResIndex = correctCycleIndex;
@@ -3390,7 +3409,7 @@ function exitDevMode() {
 
     // 3.【修复】这里本来在"未运行"时会调用 togglePause() 把计时器重新拉起来：
     //    而 stopTimer() 会先把 pauseBtn 复位成"暂停"，于是走进 else 分支，
-    //    把已经停掉的会话又启动了一次（后台出现幽灵计时，8 小时后还会弹总结框）。
+    //    把已经停掉的会话又启动了一次（后台出现幽灵计时，到点后还会弹总结框）。
     //    调试条本身不会暂停会话，所以这里不需要也不应该碰运行状态。
 
     // 4. 退出开发者模式后，把刚才让路的预加载接着跑完（已经是缓存命中的会很快过掉）
@@ -3560,7 +3579,7 @@ function buildDailyStats(list) {
 
 function heatLevel(stats) {
     if (!stats || stats.count === 0) return 0;        // 没用过
-    if (stats.seconds >= 8 * 3600) return 3;          // 达到 8 小时（计时上限就是 8 小时，所以是"达到"而不是"超过"）
+    if (stats.seconds >= 8 * 3600) return 3;          // 当天累计达到 8 小时，保留原有颜色分级
     if (stats.seconds > 4 * 3600) return 2;           // 超过 4 小时
     return 1;                                         // 用过（哪怕只有几秒）
 }
